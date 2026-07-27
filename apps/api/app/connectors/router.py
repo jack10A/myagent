@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from html import escape
+import json
 from urllib.parse import urlencode
 
 import httpx
@@ -238,6 +239,8 @@ def linkedin_callback(code: str = Query(...), state: str | None = Query(default=
         "mode": "oidc_basic_profile",
     }
     write_profile({"linkedin": linkedin_profile})
+    sync_params = urlencode({"linkedin_profile": json.dumps(linkedin_profile)})
+    sync_url = f"{settings.frontend_url}/connectors?{sync_params}"
 
     return f"""
     <html>
@@ -259,7 +262,7 @@ def linkedin_callback(code: str = Query(...), state: str | None = Query(default=
           <p>Name: <strong>{escape(profile.get('name') or 'Unknown')}</strong></p>
           <p>Email: <strong>{escape(profile.get('email') or 'Not returned by LinkedIn')}</strong></p>
           <p>This OIDC connection gives basic identity only. Add headline/profile URL in MyAgent later for stronger career analysis.</p>
-          <p><a href="{settings.frontend_url}/connectors">Return to MyAgent Connectors</a></p>
+          <p><a href="{sync_url}">Return to MyAgent Connectors and sync LinkedIn</a></p>
         </main>
       </body>
     </html>

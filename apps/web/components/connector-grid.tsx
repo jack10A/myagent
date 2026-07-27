@@ -3,7 +3,7 @@
 import { CalendarDays, FileText, Github, Linkedin, Mail, MapPin, ShieldAlert, UploadCloud } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { API_URL } from "@/lib/api";
-import { getProfile, type MyAgentProfile } from "@/lib/profile";
+import { getProfile, saveProfile, type MyAgentProfile } from "@/lib/profile";
 
 const baseConnectors = [
   { name: "Gmail", key: "gmail", detail: "Read important email signals and prepare approval-ready drafts.", icon: Mail },
@@ -18,9 +18,29 @@ const baseConnectors = [
 
 export function ConnectorGrid() {
   const [profile, setProfile] = useState<MyAgentProfile | null>(null);
+  const [syncStatus, setSyncStatus] = useState("");
 
   useEffect(() => {
     getProfile().then(setProfile).catch(() => setProfile(null));
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const rawLinkedIn = params.get("linkedin_profile");
+    if (!rawLinkedIn) return;
+
+    try {
+      const linkedin = JSON.parse(rawLinkedIn) as NonNullable<MyAgentProfile["linkedin"]>;
+      saveProfile({ linkedin })
+        .then(({ profile: savedProfile }) => {
+          setProfile(savedProfile);
+          setSyncStatus("LinkedIn synced into this MyAgent profile.");
+          window.history.replaceState(null, "", window.location.pathname);
+        })
+        .catch(() => setSyncStatus("LinkedIn connected, but MyAgent could not sync it into this profile."));
+    } catch {
+      setSyncStatus("LinkedIn returned profile data, but MyAgent could not read it.");
+    }
   }, []);
 
   const statusByKey = useMemo(
@@ -39,6 +59,7 @@ export function ConnectorGrid() {
 
   return (
     <div className="space-y-4">
+      {syncStatus ? <div className="rounded-md border border-teal/35 bg-teal/10 p-3 text-sm font-semibold text-teal">{syncStatus}</div> : null}
       {profile?.gmail ? <GmailInboxPreview gmail={profile.gmail} /> : null}
       {profile?.calendar ? <CalendarPreview calendar={profile.calendar} /> : null}
       {profile?.github ? <GitHubPreview github={profile.github} /> : null}

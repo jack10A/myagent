@@ -4,7 +4,15 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ROOT_DIR = Path(__file__).resolve().parents[4]
+def find_root_dir() -> Path:
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if (parent / ".env").exists() or (parent / "apps").exists() or (parent / "render.yaml").exists():
+            return parent
+    return current.parents[2]
+
+
+ROOT_DIR = find_root_dir()
 ENV_FILE = ROOT_DIR / ".env"
 
 

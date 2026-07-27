@@ -1,0 +1,15 @@
+{
+  "name": "myagent",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "powershell -ExecutionPolicy Bypass -File scripts/start-myagent.ps1",
+    "dev": "powershell -ExecutionPolicy Bypass -File scripts/start-myagent.ps1",
+    "start:local": "powershell -ExecutionPolicy Bypass -File scripts/start-myagent.ps1",
+    "backend:open": "powershell -ExecutionPolicy Bypass -File scripts/start-backend.ps1",
+    "open": "powershell -ExecutionPolicy Bypass -File scripts/open-myagent.ps1",
+    "web:dev": "cd apps/web && npm run dev",
+    "web:build": "cd apps/web && npm run build",
+    "api:dev": "cd apps/api && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+  }
+}

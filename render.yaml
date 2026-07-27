@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: myagent-api
+    runtime: docker
+    dockerfilePath: ./infra/docker/api.Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: local
+      - key: SKIP_DB_STARTUP
+        value: "true"
+      - key: DB_CONNECT_TIMEOUT_SECONDS
+        value: "2"
+      - key: FRONTEND_URL
+        value: http://localhost:3000
+      - key: CORS_ORIGINS
+        value: '["http://localhost:3000"]'
+      - key: JWT_SECRET
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GMAIL_REDIRECT_URI
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_REDIRECT_URI
+        sync: false
+      - key: LINKEDIN_CLIENT_ID
+        sync: false
+      - key: LINKEDIN_CLIENT_SECRET
+        sync: false
+      - key: LINKEDIN_REDIRECT_URI
+        sync: false

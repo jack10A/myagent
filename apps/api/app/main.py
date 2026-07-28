@@ -7,6 +7,7 @@ from app.actions.router import router as actions_router
 from app.alerts.router import router as alerts_router
 from app.approvals.router import router as approvals_router
 from app.auth.router import router as auth_router
+from app.briefing.router import router as briefing_router
 from app.capture.router import router as capture_router
 from app.calendar.router import router as calendar_router
 from app.connectors.router import router as connectors_router
@@ -52,6 +53,7 @@ def health() -> dict[str, str]:
 
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(briefing_router, prefix="/api/briefing", tags=["briefing"])
 app.include_router(capture_router, prefix="/api/capture", tags=["capture"])
 app.include_router(calendar_router, prefix="/api/calendar", tags=["calendar"])
 app.include_router(alerts_router, prefix="/api/alerts", tags=["alerts"])

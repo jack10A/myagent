@@ -14,6 +14,14 @@ export type TaskStateResponse = {
   updated_at: string | null;
 };
 
+export function taskStateId(kind: "calendar-task" | "travel" | "job" | "learning" | "capture" | "approval" | "health", id: string) {
+  return `${kind}-${id}`;
+}
+
+export function hiddenTaskIds(response: TaskStateResponse): Set<string> {
+  return new Set(response.hidden_ids);
+}
+
 export async function getTaskState(): Promise<TaskStateResponse> {
   return apiFetch<TaskStateResponse>("/tasks/state");
 }

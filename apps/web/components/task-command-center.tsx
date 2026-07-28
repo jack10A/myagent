@@ -22,7 +22,7 @@ import { getCaptureTasks, type CaptureTask } from "@/lib/capture";
 import { getHealthSummary, type HealthSummary } from "@/lib/health";
 import { getJobs, type JobTask } from "@/lib/jobs";
 import { getLearning, type LearningTask } from "@/lib/learning";
-import { clearTaskState, getTaskState, setTaskStatus } from "@/lib/tasks";
+import { clearTaskState, getTaskState, setTaskStatus, taskStateId } from "@/lib/tasks";
 
 type Focus = "all" | "approval" | "calendar" | "travel" | "career" | "learning" | "health" | "capture";
 type Priority = "urgent" | "high" | "medium" | "low";
@@ -232,6 +232,7 @@ export function TaskCommandCenter() {
     setSavingId(id);
     try {
       await setTaskStatus(id, "done");
+      window.dispatchEvent(new Event("myagent:task-state-change"));
     } catch {
       setStatus("Task was hidden locally, but the backend did not save it yet.");
     } finally {
@@ -244,6 +245,7 @@ export function TaskCommandCenter() {
     setSavingId(id);
     try {
       await setTaskStatus(id, "snoozed");
+      window.dispatchEvent(new Event("myagent:task-state-change"));
     } catch {
       setStatus("Task was snoozed locally, but the backend did not save it yet.");
     } finally {
@@ -255,6 +257,7 @@ export function TaskCommandCenter() {
     setHiddenIds(new Set());
     try {
       await clearTaskState();
+      window.dispatchEvent(new Event("myagent:task-state-change"));
       setStatus("Task progress restored.");
     } catch {
       setStatus("Tasks restored locally, but the backend reset did not finish.");
@@ -283,7 +286,7 @@ function buildActions({
     .filter((item) => item.status === "pending" || item.status === "editing")
     .forEach((item) => {
       actions.push({
-        id: `approval-${item.id}`,
+        id: taskStateId("approval", item.id),
         kind: "approval",
         title: item.recommendation.title || "Approval waiting",
         body: item.guardian.reason || item.recommendation.rationale || "Guardian is waiting for your decision.",
@@ -311,7 +314,7 @@ function buildActions({
 
   (agenda?.travel_guardian.risks ?? []).forEach((risk: TravelRisk) => {
     actions.push({
-      id: `travel-${risk.id}`,
+      id: taskStateId("travel", risk.id),
       kind: "travel",
       title: risk.title,
       body: risk.reason,
@@ -325,7 +328,7 @@ function buildActions({
 
   (agenda?.prep_tasks ?? []).slice(0, 3).forEach((task) => {
     actions.push({
-      id: `calendar-task-${task.id}`,
+      id: taskStateId("calendar-task", task.id),
       kind: "calendar",
       title: task.title,
       body: task.steps[0] || "Prepare for this event.",
@@ -338,7 +341,7 @@ function buildActions({
 
   jobs.slice(0, 4).forEach((job) => {
     actions.push({
-      id: `job-${job.id}`,
+      id: taskStateId("job", job.id),
       kind: "career",
       title: `Move forward: ${job.title}`,
       body: job.next_step || "Continue application prep.",
@@ -352,7 +355,7 @@ function buildActions({
 
   learning.slice(0, 3).forEach((task) => {
     actions.push({
-      id: `learning-${task.id}`,
+      id: taskStateId("learning", task.id),
       kind: "learning",
       title: task.title,
       body: task.next_step.task,
@@ -365,7 +368,7 @@ function buildActions({
 
   captures.slice(0, 3).forEach((task) => {
     actions.push({
-      id: `capture-${task.id}`,
+      id: taskStateId("capture", task.id),
       kind: "capture",
       title: task.title,
       body: `Follow up from ${task.source_title || task.capture_type}.`,

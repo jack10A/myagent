@@ -4,9 +4,12 @@ import Link from "next/link";
 import { BriefcaseBusiness, CheckCircle2, Copy, ExternalLink, FileText, Mail, RefreshCw, Send, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getJobs, prepareJobOutreach, updateJobStatus, type JobItem, type JobTask } from "@/lib/jobs";
+import { getTaskState, hiddenTaskIds, setTaskStatus, taskStateId, type TaskStateItem } from "@/lib/tasks";
 
 export function JobTaskList() {
   const [tasks, setTasks] = useState<JobTask[]>([]);
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  const [stateItems, setStateItems] = useState<Record<string, TaskStateItem>>({});
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [outreachId, setOutreachId] = useState<string | null>(null);
@@ -17,8 +20,10 @@ export function JobTaskList() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getJobs();
+      const [data, state] = await Promise.all([getJobs(), getTaskState()]);
       setTasks(data.tasks);
+      setHiddenIds(hiddenTaskIds(state));
+      setStateItems(state.items);
     } catch {
       setError("Could not load job tasks. Start the backend, then refresh.");
     } finally {
@@ -28,7 +33,19 @@ export function JobTaskList() {
 
   useEffect(() => {
     void load();
+    window.addEventListener("myagent:task-state-change", loadTaskState);
+    return () => window.removeEventListener("myagent:task-state-change", loadTaskState);
   }, []);
+
+  async function loadTaskState() {
+    try {
+      const state = await getTaskState();
+      setHiddenIds(hiddenTaskIds(state));
+      setStateItems(state.items);
+    } catch {
+      setError("Task progress could not refresh yet.");
+    }
+  }
 
   async function setStatus(id: string, status: JobItem["status"]) {
     setSavingId(id);
@@ -36,10 +53,27 @@ export function JobTaskList() {
     try {
       const data = await updateJobStatus(id, status);
       setTasks(data.tasks);
+      if (status === "applied" || status === "rejected") {
+        await markTask(taskStateId("job", id), "done", false);
+      }
     } catch {
       setError("Could not update job progress.");
     } finally {
       setSavingId(null);
+    }
+  }
+
+  async function markTask(id: string, status: "done" | "snoozed", manageSaving = true) {
+    setHiddenIds((current) => new Set([...current, id]));
+    if (manageSaving) setSavingId(id);
+    setError(null);
+    try {
+      await setTaskStatus(id, status);
+      window.dispatchEvent(new Event("myagent:task-state-change"));
+    } catch {
+      setError("Task was hidden locally, but could not be saved yet.");
+    } finally {
+      if (manageSaving) setSavingId(null);
     }
   }
 
@@ -92,7 +126,7 @@ export function JobTaskList() {
         </div>
       ) : null}
 
-      {!tasks.length ? (
+      {visibleTasks(tasks, hiddenIds).length === 0 ? (
         <div className="rounded-md border border-line bg-white p-5 shadow-soft">
           <h2 className="font-semibold">No job tasks yet</h2>
           <p className="mt-2 text-sm leading-6 text-ink/65">Open Growth and track a job from Job Radar.</p>
@@ -100,7 +134,7 @@ export function JobTaskList() {
       ) : null}
 
       <div className="grid gap-4">
-        {tasks.map((task) => (
+        {visibleTasks(tasks, hiddenIds).map((task) => (
           <article className="rounded-md border border-line bg-white p-5 shadow-soft" key={task.id}>
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 flex-1">
@@ -172,6 +206,12 @@ export function JobTaskList() {
                 <button className="inline-flex items-center gap-2 rounded-md border border-line px-4 py-2 text-sm font-semibold disabled:opacity-45" disabled={savingId === task.id} onClick={() => void setStatus(task.id, "rejected")} type="button">
                   <CheckCircle2 size={16} /> Archive
                 </button>
+                <button className="inline-flex items-center gap-2 rounded-md border border-line px-4 py-2 text-sm font-semibold disabled:opacity-45" disabled={savingId === taskStateId("job", task.id)} onClick={() => void markTask(taskStateId("job", task.id), "done")} type="button">
+                  Done
+                </button>
+                <button className="inline-flex items-center gap-2 rounded-md border border-line px-4 py-2 text-sm font-semibold disabled:opacity-45" disabled={savingId === taskStateId("job", task.id)} onClick={() => void markTask(taskStateId("job", task.id), "snoozed")} type="button">
+                  Snooze
+                </button>
                 {Object.entries(task.search_links ?? {}).map(([source, url]) => (
                   <a className="inline-flex items-center gap-2 rounded-md border border-line px-4 py-2 text-sm font-semibold" href={url} key={source} rel="noreferrer" target="_blank">
                     {source} <ExternalLink size={14} />
@@ -182,7 +222,31 @@ export function JobTaskList() {
           </article>
         ))}
       </div>
+
+      <CompletedTasks items={stateItems} />
     </section>
+  );
+}
+
+function visibleTasks(tasks: JobTask[], hiddenIds: Set<string>) {
+  return tasks.filter((task) => !hiddenIds.has(taskStateId("job", task.id)));
+}
+
+function CompletedTasks({ items }: { items: Record<string, TaskStateItem> }) {
+  const completed = Object.values(items).filter((item) => item.id.startsWith("job-"));
+  if (!completed.length) return null;
+  return (
+    <details className="rounded-md border border-line bg-white p-4 shadow-soft">
+      <summary className="cursor-pointer text-sm font-semibold">Completed / snoozed job tasks ({completed.length})</summary>
+      <div className="mt-3 grid gap-2">
+        {completed.map((item) => (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-panel p-3 text-sm" key={item.id}>
+            <span>{item.id.replace(/^job-/, "")}</span>
+            <span className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-ink/55">{item.status}</span>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 

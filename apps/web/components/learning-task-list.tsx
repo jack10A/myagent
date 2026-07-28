@@ -3,9 +3,12 @@
 import { BookOpen, CheckCircle2, ExternalLink, RefreshCw, Rocket, Trophy } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getLearning, updateLearningStatus, type LearningItem, type LearningTask } from "@/lib/learning";
+import { getTaskState, hiddenTaskIds, setTaskStatus, taskStateId, type TaskStateItem } from "@/lib/tasks";
 
 export function LearningTaskList() {
   const [tasks, setTasks] = useState<LearningTask[]>([]);
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  const [stateItems, setStateItems] = useState<Record<string, TaskStateItem>>({});
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -14,8 +17,10 @@ export function LearningTaskList() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getLearning();
+      const [data, state] = await Promise.all([getLearning(), getTaskState()]);
       setTasks(data.tasks);
+      setHiddenIds(hiddenTaskIds(state));
+      setStateItems(state.items);
     } catch {
       setError("Could not load learning tasks. Start the backend, then refresh.");
     } finally {
@@ -25,7 +30,19 @@ export function LearningTaskList() {
 
   useEffect(() => {
     void load();
+    window.addEventListener("myagent:task-state-change", loadTaskState);
+    return () => window.removeEventListener("myagent:task-state-change", loadTaskState);
   }, []);
+
+  async function loadTaskState() {
+    try {
+      const state = await getTaskState();
+      setHiddenIds(hiddenTaskIds(state));
+      setStateItems(state.items);
+    } catch {
+      setError("Task progress could not refresh yet.");
+    }
+  }
 
   async function setStatus(id: string, status: LearningItem["status"]) {
     setSavingId(id);
@@ -33,10 +50,27 @@ export function LearningTaskList() {
     try {
       const data = await updateLearningStatus(id, status);
       setTasks(data.tasks);
+      if (status === "completed") {
+        await markTask(taskStateId("learning", id), "done", false);
+      }
     } catch {
       setError("Could not update learning progress.");
     } finally {
       setSavingId(null);
+    }
+  }
+
+  async function markTask(id: string, status: "done" | "snoozed", manageSaving = true) {
+    setHiddenIds((current) => new Set([...current, id]));
+    if (manageSaving) setSavingId(id);
+    setError(null);
+    try {
+      await setTaskStatus(id, status);
+      window.dispatchEvent(new Event("myagent:task-state-change"));
+    } catch {
+      setError("Task was hidden locally, but could not be saved yet.");
+    } finally {
+      if (manageSaving) setSavingId(null);
     }
   }
 
@@ -64,7 +98,7 @@ export function LearningTaskList() {
 
       {error ? <div className="rounded-md border border-coral/50 bg-coral/10 p-4 text-sm text-coral">{error}</div> : null}
 
-      {!tasks.length ? (
+      {visibleTasks(tasks, hiddenIds).length === 0 ? (
         <div className="rounded-md border border-line bg-white p-5 shadow-soft">
           <h2 className="font-semibold">No learning tasks yet</h2>
           <p className="mt-2 text-sm leading-6 text-ink/65">
@@ -74,7 +108,7 @@ export function LearningTaskList() {
       ) : null}
 
       <div className="grid gap-4">
-        {tasks.map((task) => (
+        {visibleTasks(tasks, hiddenIds).map((task) => (
           <article className="rounded-md border border-line bg-white p-5 shadow-soft" key={task.id}>
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 flex-1">
@@ -132,6 +166,14 @@ export function LearningTaskList() {
                 </button>
                 <button
                   className="inline-flex items-center gap-2 rounded-md border border-line px-4 py-2 text-sm font-semibold disabled:opacity-45"
+                  disabled={savingId === taskStateId("learning", task.id)}
+                  onClick={() => void markTask(taskStateId("learning", task.id), "snoozed")}
+                  type="button"
+                >
+                  Snooze
+                </button>
+                <button
+                  className="inline-flex items-center gap-2 rounded-md border border-line px-4 py-2 text-sm font-semibold disabled:opacity-45"
                   disabled={savingId === task.id}
                   onClick={() => void setStatus(task.id, "portfolio")}
                   type="button"
@@ -148,6 +190,30 @@ export function LearningTaskList() {
           </article>
         ))}
       </div>
+
+      <CompletedTasks items={stateItems} />
     </section>
+  );
+}
+
+function visibleTasks(tasks: LearningTask[], hiddenIds: Set<string>) {
+  return tasks.filter((task) => !hiddenIds.has(taskStateId("learning", task.id)));
+}
+
+function CompletedTasks({ items }: { items: Record<string, TaskStateItem> }) {
+  const completed = Object.values(items).filter((item) => item.id.startsWith("learning-"));
+  if (!completed.length) return null;
+  return (
+    <details className="rounded-md border border-line bg-white p-4 shadow-soft">
+      <summary className="cursor-pointer text-sm font-semibold">Completed / snoozed learning tasks ({completed.length})</summary>
+      <div className="mt-3 grid gap-2">
+        {completed.map((item) => (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-panel p-3 text-sm" key={item.id}>
+            <span>{item.id.replace(/^learning-/, "")}</span>
+            <span className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-ink/55">{item.status}</span>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }

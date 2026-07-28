@@ -12,6 +12,7 @@ import {
   HeartPulse,
   RefreshCw,
   ShieldCheck,
+  TimerReset,
   Video
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -47,11 +48,13 @@ export function TaskCommandCenter() {
   const [captures, setCaptures] = useState<CaptureTask[]>([]);
   const [health, setHealth] = useState<HealthSummary | null>(null);
   const [focus, setFocus] = useState<Focus>("all");
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("Loading your action plan...");
 
   async function load() {
     setLoading(true);
+    setHiddenIds(new Set());
     const [approvalResult, calendarResult, jobResult, learningResult, captureResult, healthResult] = await Promise.allSettled([
       getApprovals(),
       getCalendarAgenda(),
@@ -78,14 +81,16 @@ export function TaskCommandCenter() {
   }, []);
 
   const items = useMemo(() => {
-    return buildActions({ approvals, agenda, jobs, learning, captures, health });
-  }, [approvals, agenda, jobs, learning, captures, health]);
+    return buildActions({ approvals, agenda, jobs, learning, captures, health }).filter((item) => !hiddenIds.has(item.id));
+  }, [approvals, agenda, jobs, learning, captures, health, hiddenIds]);
 
   const filtered = focus === "all" ? items : items.filter((item) => item.kind === focus);
   const top = filtered[0] ?? items[0];
   const urgentCount = items.filter((item) => item.priority === "urgent" || item.priority === "high").length;
   const pendingApprovals = approvals.filter((item) => item.status === "pending" || item.status === "editing").length;
-  const activeWork = jobs.length + learning.length + captures.length + (agenda?.prep_tasks.length ?? 0);
+  const activeWork = items.length;
+  const rawItemCount = buildActions({ approvals, agenda, jobs, learning, captures, health }).length;
+  const hiddenCount = rawItemCount - items.length;
 
   return (
     <section className="space-y-4">
@@ -120,6 +125,16 @@ export function TaskCommandCenter() {
               <Metric label="Active work" value={String(activeWork)} tone="teal" />
             </div>
 
+            {hiddenCount ? (
+              <div className="mt-3 flex flex-col gap-3 rounded-md border border-line bg-panel p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <span>{hiddenCount} item(s) hidden from the cockpit. Detailed task sections still show the source records.</span>
+                <button className="inline-flex w-fit items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-semibold" onClick={() => setHiddenIds(new Set())} type="button">
+                  <TimerReset size={15} />
+                  Restore
+                </button>
+              </div>
+            ) : null}
+
             <div className="mt-5 rounded-md border border-teal/35 bg-teal/10 p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal">Do this first</p>
               <h3 className="mt-2 text-xl font-semibold">{top?.title ?? "No active tasks yet"}</h3>
@@ -133,6 +148,16 @@ export function TaskCommandCenter() {
                   {top?.action ?? "Open Growth"}
                   <ChevronRight size={14} />
                 </Link>
+                {top ? (
+                  <>
+                    <button className="rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold" onClick={() => hideItem(top.id)} type="button">
+                      Mark done
+                    </button>
+                    <button className="rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold" onClick={() => hideItem(top.id)} type="button">
+                      Snooze
+                    </button>
+                  </>
+                ) : null}
               </div>
             </div>
           </div>
@@ -158,6 +183,19 @@ export function TaskCommandCenter() {
                 <AgentLoad label="Health" value={health?.insights.length ?? 0} />
               </div>
             </div>
+
+            <div className="mt-4 rounded-md bg-white p-4">
+              <p className="text-sm font-semibold">Quick starts</p>
+              <div className="mt-3 grid gap-2">
+                {!jobs.length ? <QuickStart href="/growth" label="Track an internship" /> : null}
+                {!learning.length ? <QuickStart href="/growth" label="Track a course" /> : null}
+                {!captures.length ? <QuickStart href="/capture" label="Analyze a meeting/video" /> : null}
+                {!health?.latest && !health?.latest_fitness ? <QuickStart href="/health" label="Log health check-in" /> : null}
+                {jobs.length && learning.length && captures.length && (health?.latest || health?.latest_fitness) ? (
+                  <p className="rounded-md bg-panel p-3 text-sm text-ink/60">All major task sources have data.</p>
+                ) : null}
+              </div>
+            </div>
           </aside>
         </div>
       </div>
@@ -176,7 +214,7 @@ export function TaskCommandCenter() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        {filtered.slice(0, 6).map((item) => <ActionCard item={item} key={item.id} />)}
+        {filtered.slice(0, 6).map((item) => <ActionCard item={item} key={item.id} onHide={hideItem} />)}
         {!filtered.length ? (
           <div className="rounded-md border border-dashed border-line bg-white p-5 text-sm text-ink/60 shadow-soft lg:col-span-3">
             No tasks for this filter yet. MyAgent will add them as you track jobs, learning resources, approvals, captures, health, and calendar prep.
@@ -185,6 +223,10 @@ export function TaskCommandCenter() {
       </div>
     </section>
   );
+
+  function hideItem(id: string) {
+    setHiddenIds((current) => new Set([...current, id]));
+  }
 }
 
 function buildActions({
@@ -330,7 +372,7 @@ function buildActions({
   return actions.sort((a, b) => priorityRank[b.priority] - priorityRank[a.priority]);
 }
 
-function ActionCard({ item }: { item: ActionItem }) {
+function ActionCard({ item, onHide }: { item: ActionItem; onHide: (id: string) => void }) {
   const Icon = iconFor(item.kind);
   return (
     <article className="rounded-md border border-line bg-white p-5 shadow-soft">
@@ -344,10 +386,18 @@ function ActionCard({ item }: { item: ActionItem }) {
       <h3 className="mt-2 font-semibold leading-5">{item.title}</h3>
       <p className="mt-2 line-clamp-3 text-sm leading-6 text-ink/65">{item.body}</p>
       {item.meta ? <p className="mt-3 rounded-md bg-panel px-3 py-2 text-xs font-semibold text-ink/55">{item.meta}</p> : null}
-      <Link className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-ink" href={item.href}>
-        {item.action}
-        <ChevronRight size={14} />
-      </Link>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Link className="inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-semibold text-white" href={item.href}>
+          {item.action}
+          <ChevronRight size={14} />
+        </Link>
+        <button className="rounded-md border border-line px-3 py-2 text-sm font-semibold" onClick={() => onHide(item.id)} type="button">
+          Done
+        </button>
+        <button className="rounded-md border border-line px-3 py-2 text-sm font-semibold" onClick={() => onHide(item.id)} type="button">
+          Snooze
+        </button>
+      </div>
     </article>
   );
 }
@@ -373,6 +423,15 @@ function AgentLoad({ label, value }: { label: string; value: number }) {
       <p className="text-sm font-semibold">{label}</p>
       <p className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-ink/60">{value}</p>
     </div>
+  );
+}
+
+function QuickStart({ href, label }: { href: string; label: string }) {
+  return (
+    <Link className="flex items-center justify-between rounded-md bg-panel p-3 text-sm font-semibold transition hover:bg-white" href={href}>
+      {label}
+      <ChevronRight size={14} className="text-ink/40" />
+    </Link>
   );
 }
 

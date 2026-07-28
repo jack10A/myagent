@@ -33,7 +33,7 @@ export function DashboardProfile() {
   const lifeStage = profile?.lifeStage || profile?.linkedin?.current_role;
   const field = profile?.field || profile?.linkedin?.headline || profile?.cv?.role_guess;
   const goal = profile?.goal || profile?.linkedin?.target_role;
-  const guardianCity = profile?.city || profile?.calendar?.events?.find((event) => event.location)?.location;
+  const knownLocation = profile?.city || profile?.calendar?.events?.find((event) => event.location)?.location;
 
   return (
     <article className="rounded-md border border-line bg-white p-5 shadow-soft">
@@ -60,9 +60,9 @@ export function DashboardProfile() {
         <div className="rounded-md bg-panel p-3">
           <div className="flex items-center gap-2 text-xs font-semibold text-ink/55">
             <MapPin size={14} />
-            Guardian City
+            Location Context
           </div>
-          <p className="mt-2 text-sm font-semibold">{guardianCity || "Use live location"}</p>
+          <p className="mt-2 text-sm font-semibold">{knownLocation || "Use live location"}</p>
           <p className="mt-1 text-xs text-ink/60">{goal || "Goal not set"}</p>
         </div>
       </div>

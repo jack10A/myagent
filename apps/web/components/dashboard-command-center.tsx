@@ -89,7 +89,7 @@ function readinessItems(profile: MyAgentProfile | null, completeness: number) {
     },
     {
       label: "Guardian",
-      status: profile?.city ? profile.city : "Live map",
+      status: profile?.city ? profile.city : profile?.calendar?.events?.some((event) => event.location) ? "Travel context" : "Live map",
       ready: Boolean(profile?.city || profile?.calendar?.events?.some((event) => event.location)),
       href: "/map",
       icon: MapPin
@@ -335,7 +335,7 @@ export function DashboardCommandCenter() {
                 ["Gmail", profile?.gmail ? "Read-only connected" : "Not connected"],
                 ["GitHub", profile?.github ? "Connected" : "Not connected"],
                 ["CV", profile?.cv ? "Analyzed" : "Waiting"],
-                ["Guardian", profile?.city ? `City: ${profile.city}` : "Live map ready"]
+                ["Guardian", profile?.city ? `City: ${profile.city}` : profile?.calendar?.events?.some((event) => event.location) ? "Travel context ready" : "Live map ready"]
               ].map(([name, status]) => (
                 <div key={name} className="flex items-center justify-between rounded-md bg-panel p-3">
                   <p className="text-sm font-semibold">{name}</p>

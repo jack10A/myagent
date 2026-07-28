@@ -112,7 +112,7 @@ def calendar_cards(agenda: dict[str, Any]) -> list[dict[str, Any]]:
                 "Check notes, email context, travel time, and one follow-up before it starts.",
                 "medium",
                 "Meeting Agent",
-                "Open calendar",
+                "Open tasks",
                 "/tasks",
                 {"id": next_event.get("id"), "start": next_event.get("start")},
             )
@@ -231,10 +231,19 @@ def briefing_summary(profile: dict[str, Any], agenda: dict[str, Any], health: di
     parts = []
     if approvals:
         parts.append(f"{len(approvals)} approval(s) waiting")
+    conflicts = agenda.get("conflicts") or []
+    if conflicts:
+        parts.append(f"{len(conflicts)} calendar conflict(s)")
     if agenda.get("next_event"):
-        parts.append("calendar has a next event")
+        next_title = agenda["next_event"].get("summary") or "next event"
+        parts.append(f"next event is {next_title}")
+    travel_risks = ((agenda.get("travel_guardian") or {}).get("risks") or [])
+    if travel_risks:
+        parts.append(f"{len(travel_risks)} travel risk(s)")
     if health.get("latest_fitness"):
         parts.append("health data synced")
+    if health.get("urgent_warning"):
+        parts.append("urgent health warning")
     if jobs:
         parts.append("job prep is active")
     if learning:

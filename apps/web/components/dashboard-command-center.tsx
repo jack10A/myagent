@@ -37,27 +37,38 @@ const quickActions = [
 
 function profileCompleteness(profile: MyAgentProfile | null) {
   if (!profile) return 0;
-  const fields = [profile.name, profile.age, profile.lifeStage, profile.field, profile.goal, profile.city, profile.github, profile.cv];
+  const identityName = profile.name || profile.linkedin?.name;
+  const lifeStage = profile.lifeStage || profile.linkedin?.current_role;
+  const field = profile.field || profile.linkedin?.headline || profile.cv?.role_guess;
+  const goal = profile.goal || profile.linkedin?.target_role;
+  const city = profile.city || profile.calendar?.events?.find((event) => event.location)?.location;
+  const fields = [identityName, profile.age, lifeStage, field, goal, city, profile.github, profile.linkedin, profile.gmail, profile.calendar, profile.cv, profile.health?.latest_fitness];
   return Math.round((fields.filter(Boolean).length / fields.length) * 100);
 }
 
 function sourceCount(profile: MyAgentProfile | null) {
   if (!profile) return 0;
-  return [profile.github, profile.cv, profile.careerAuth, profile.calendar].filter(Boolean).length;
+  return [profile.gmail, profile.calendar, profile.github, profile.linkedin, profile.cv, profile.health?.latest_fitness].filter(Boolean).length;
+}
+
+function importantEmailCount(profile: MyAgentProfile | null) {
+  const messages = profile?.gmail?.important_messages ?? [];
+  return messages.filter((message) => !isAuthOrVerificationEmail(message)).length;
 }
 
 function readinessItems(profile: MyAgentProfile | null, completeness: number) {
+  const profileReady = completeness >= 65 || Boolean(profile?.linkedin?.name && profile?.github && profile?.cv);
   return [
     {
       label: "Profile",
-      status: completeness >= 70 ? "Strong memory" : "Needs context",
-      ready: completeness >= 70,
+      status: profileReady ? "Strong memory" : "Needs context",
+      ready: profileReady,
       href: "/onboarding",
       icon: UserRoundCheck
     },
     {
       label: "Gmail",
-      status: profile?.gmail ? `${profile.gmail.important_count ?? 0} important` : "Connect",
+      status: profile?.gmail ? `${importantEmailCount(profile)} important` : "Connect",
       ready: Boolean(profile?.gmail),
       href: "/connectors",
       icon: Mail
@@ -79,7 +90,7 @@ function readinessItems(profile: MyAgentProfile | null, completeness: number) {
     {
       label: "Guardian",
       status: profile?.city ? profile.city : "Live map",
-      ready: Boolean(profile?.city),
+      ready: Boolean(profile?.city || profile?.calendar?.events?.some((event) => event.location)),
       href: "/map",
       icon: MapPin
     }
@@ -91,7 +102,7 @@ function buildNextActions(profile: MyAgentProfile | null, completeness: number) 
     {
       title: profile?.gmail ? "Review important Gmail signals" : "Connect Gmail read-only",
       body: profile?.gmail
-        ? `${profile.gmail.important_count ?? 0} message(s) look worth attention. MyAgent can draft replies only after approval.`
+        ? `${importantEmailCount(profile)} message(s) look worth attention. MyAgent can draft replies only after approval.`
         : "Let the Email Agent find important messages and prepare draft replies for approval.",
       href: profile?.gmail ? "/connectors" : "/connectors",
       action: profile?.gmail ? "Open Gmail signals" : "Connect Gmail",
@@ -101,8 +112,8 @@ function buildNextActions(profile: MyAgentProfile | null, completeness: number) 
     {
       title: completeness >= 70 ? "Sharpen this week plan" : "Finish profile memory",
       body: completeness >= 70
-        ? profile?.goal
-          ? `Current goal: ${profile.goal}`
+        ? profile?.goal || profile?.linkedin?.target_role
+          ? `Current goal: ${profile.goal || profile.linkedin?.target_role}`
           : "Profile is ready enough for MyAgent to recommend a weekly plan."
         : "A few answers make every agent more personal: field, goal, city, and career sources.",
       href: completeness >= 70 ? "/growth" : "/onboarding",
@@ -133,7 +144,7 @@ export function DashboardCommandCenter() {
   const readiness = readinessItems(profile, completeness);
   const readyCount = readiness.filter((item) => item.ready).length;
   const nextActions = buildNextActions(profile, completeness);
-  const greetingName = profile?.name || "Jack";
+  const greetingName = profile?.name || profile?.linkedin?.given_name || profile?.linkedin?.name || "Jack";
 
   return (
     <>
@@ -145,7 +156,7 @@ export function DashboardCommandCenter() {
                 <span className="h-2 w-2 rounded-full bg-sage" />
                 {loading ? "Starting agents" : "System ready"}
               </span>
-              <span className="rounded-md bg-panel px-3 py-1 text-xs font-semibold text-ink/65">{readyCount}/4 signals ready</span>
+              <span className="rounded-md bg-panel px-3 py-1 text-xs font-semibold text-ink/65">{readyCount}/{readiness.length} signals ready</span>
             </div>
 
             <h1 className="mt-5 max-w-3xl text-2xl font-semibold tracking-normal text-ink sm:text-4xl">
@@ -230,9 +241,9 @@ export function DashboardCommandCenter() {
                   <h2 className="text-lg font-semibold">Your current focus</h2>
                 </div>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/65">
-                  {profile?.goal
-                    ? `MyAgent is organizing recommendations around your goal: ${profile.goal}`
-                    : "Complete your profile so every agent can organize recommendations around one clear goal."}
+                  {profile?.goal || profile?.linkedin?.target_role
+                    ? `MyAgent is organizing recommendations around your goal: ${profile.goal || profile.linkedin?.target_role}`
+                    : "Add one clear target role or goal so every agent can organize recommendations around it."}
                 </p>
               </div>
               <span className="rounded-md bg-panel px-3 py-1 text-xs font-semibold">
@@ -279,11 +290,13 @@ export function DashboardCommandCenter() {
             </div>
             <div className="mt-4 grid gap-3">
               <p className="rounded-md bg-panel p-3 text-sm text-ink/70">
-                {profile?.field ? `Field: ${profile.field}` : "Add your field in the interview to personalize job and study recommendations."}
+                {profile?.field || profile?.linkedin?.headline || profile?.cv?.role_guess
+                  ? `Field: ${profile.field || profile.linkedin?.headline || profile.cv?.role_guess}`
+                  : "Add your field in the interview to personalize job and study recommendations."}
               </p>
               <p className="rounded-md bg-panel p-3 text-sm text-ink/70">
                 {profile?.gmail
-                  ? `Gmail connected read-only: ${profile.gmail.recent_scanned ?? 0} recent emails scanned, ${profile.gmail.important_count ?? 0} important signal(s).`
+                  ? `Gmail connected read-only: ${profile.gmail.recent_scanned ?? 0} recent emails scanned, ${importantEmailCount(profile)} important signal(s).`
                   : "Gmail is ready to connect from the Connectors page."}
               </p>
               <p className="rounded-md bg-panel p-3 text-sm text-ink/70">
@@ -352,6 +365,21 @@ const brainCopy = [
   "Drafts the best move",
   "You stay in control"
 ];
+
+function isAuthOrVerificationEmail(message: { subject?: string | null; from?: string | null; snippet?: string | null }) {
+  const text = `${message.subject ?? ""} ${message.from ?? ""} ${message.snippet ?? ""}`.toLowerCase();
+  return [
+    "verification code",
+    "verify it's you",
+    "verify it&#39;s you",
+    "security code",
+    "one-time code",
+    "2-step verification",
+    "two-factor",
+    "sign-in attempt",
+    "login code"
+  ].some((term) => text.includes(term));
+}
 
 function MetricPill({ label, value }: { label: string; value: string }) {
   return (

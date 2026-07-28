@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Brain, Github, MapPin, UserRound } from "lucide-react";
+import { Brain, Github, Linkedin, MapPin, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getProfile, type MyAgentProfile } from "@/lib/profile";
 
@@ -29,6 +29,12 @@ export function DashboardProfile() {
     window.location.reload();
   }
 
+  const displayName = profile?.name || profile?.linkedin?.name;
+  const lifeStage = profile?.lifeStage || profile?.linkedin?.current_role;
+  const field = profile?.field || profile?.linkedin?.headline || profile?.cv?.role_guess;
+  const goal = profile?.goal || profile?.linkedin?.target_role;
+  const guardianCity = profile?.city || profile?.calendar?.events?.find((event) => event.location)?.location;
+
   return (
     <article className="rounded-md border border-line bg-white p-5 shadow-soft">
       <div className="flex items-center gap-3">
@@ -37,7 +43,7 @@ export function DashboardProfile() {
         </span>
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal">Context Profile</p>
-          <h2 className="text-lg font-semibold">{profile?.name ? `${profile.name}'s MyAgent` : "MyAgent needs your profile"}</h2>
+          <h2 className="text-lg font-semibold">{displayName ? `${displayName}'s MyAgent` : "MyAgent needs your profile"}</h2>
           <p className="mt-1 text-xs text-ink/50">Source: {source}</p>
         </div>
       </div>
@@ -48,18 +54,31 @@ export function DashboardProfile() {
             <Brain size={14} />
             Path
           </div>
-          <p className="mt-2 text-sm font-semibold">{profile?.lifeStage || "Not answered yet"}</p>
-          <p className="mt-1 text-xs text-ink/60">{profile?.field || "Field not set"}</p>
+          <p className="mt-2 text-sm font-semibold">{lifeStage || "Not answered yet"}</p>
+          <p className="mt-1 text-xs text-ink/60">{field || "Field not set"}</p>
         </div>
         <div className="rounded-md bg-panel p-3">
           <div className="flex items-center gap-2 text-xs font-semibold text-ink/55">
             <MapPin size={14} />
             Guardian City
           </div>
-          <p className="mt-2 text-sm font-semibold">{profile?.city || "Use live location"}</p>
-          <p className="mt-1 text-xs text-ink/60">{profile?.goal || "Goal not set"}</p>
+          <p className="mt-2 text-sm font-semibold">{guardianCity || "Use live location"}</p>
+          <p className="mt-1 text-xs text-ink/60">{goal || "Goal not set"}</p>
         </div>
       </div>
+
+      {profile?.linkedin ? (
+        <div className="mt-3 rounded-md bg-panel p-3">
+          <div className="flex items-center gap-2 text-xs font-semibold text-ink/55">
+            <Linkedin size={14} />
+            LinkedIn Signal
+          </div>
+          <p className="mt-2 text-sm font-semibold">{profile.linkedin.target_role || profile.linkedin.headline || "Connected identity"}</p>
+          <p className="mt-1 text-xs text-ink/60">
+            {(profile.linkedin.skills ?? []).slice(0, 5).join(", ") || profile.linkedin.email || "Basic LinkedIn identity connected"}
+          </p>
+        </div>
+      ) : null}
 
       {profile?.github ? (
         <div className="mt-3 rounded-md bg-panel p-3">

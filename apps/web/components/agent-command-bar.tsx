@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronUp,
   ClipboardList,
+  ExternalLink,
   LoaderCircle,
   MapPin,
   Plane,
@@ -126,24 +127,9 @@ export function AgentCommandBar() {
         <div className="border-t border-white/10 bg-white text-ink">
           <div className="grid gap-5 p-5 sm:p-6 lg:grid-cols-[1fr_0.8fr]">
             <div>
-              <div className="flex items-center gap-2 text-teal">
-                <CheckCircle2 size={18} />
-                <p className="text-xs font-semibold uppercase tracking-[0.18em]">Recommendation</p>
-              </div>
-              <h3 className="mt-3 text-lg font-semibold">{trace.recommendation.title}</h3>
-              <p className="mt-2 text-sm leading-6 text-ink/65">{trace.recommendation.rationale}</p>
+              <CommandResultSummary trace={trace} />
               <div className="mt-5 flex flex-wrap gap-2">
-                {destination ? (
-                  <Link className="inline-flex items-center gap-2 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white" href={destination.href}>
-                    {destination.label}
-                    <ArrowRight size={15} />
-                  </Link>
-                ) : null}
-                {trace.guardian.approval_required ? (
-                  <Link className="rounded-md border border-line px-4 py-2 text-sm font-semibold" href="/tasks">
-                    {trace.approval ? "Open saved approval" : "Review approval"}
-                  </Link>
-                ) : null}
+                <CommandResultActions trace={trace} fallback={destination} />
               </div>
               <CommandActionPreview trace={trace} />
             </div>
@@ -163,6 +149,16 @@ export function AgentCommandBar() {
                     ? "Approval required"
                     : "Read-only action allowed"}
               </p>
+              <div className="mt-4 rounded-md bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink/45">Saved automatically</p>
+                <p className="mt-2 text-sm leading-6 text-ink/65">
+                  This command result was saved into Agent Activity with the full collaboration trace.
+                </p>
+                <Link className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-teal" href="/activity">
+                  Open Activity
+                  <ArrowRight size={14} />
+                </Link>
+              </div>
             </div>
           </div>
 
@@ -188,6 +184,112 @@ export function AgentCommandBar() {
       ) : null}
     </section>
   );
+}
+
+function CommandResultSummary({ trace }: { trace: DemoTrace }) {
+  const created = describeCreatedThings(trace);
+  const agents = trace.agent_messages.map((message) => formatAgent(message.agent));
+  const next = nextStepForTrace(trace);
+  return (
+    <div>
+      <div className="flex items-center gap-2 text-teal">
+        <CheckCircle2 size={18} />
+        <p className="text-xs font-semibold uppercase tracking-[0.18em]">Command result</p>
+      </div>
+      <h3 className="mt-3 text-lg font-semibold">{trace.recommendation.title}</h3>
+      <div className="mt-4 grid gap-3">
+        <ResultRow label="Understood" value={trace.command || trace.situation.description} />
+        <ResultRow label="Agents used" value={agents.slice(0, 5).join(" -> ")} />
+        <ResultRow label="Created" value={created} />
+        <ResultRow label="Next step" value={next} />
+      </div>
+      <p className="mt-4 text-sm leading-6 text-ink/65">{trace.recommendation.rationale}</p>
+    </div>
+  );
+}
+
+function ResultRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-line bg-panel p-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink/45">{label}</p>
+      <p className="mt-1 text-sm leading-6 text-ink/75">{value}</p>
+    </div>
+  );
+}
+
+function CommandResultActions({ fallback, trace }: { fallback?: { href: string; label: string }; trace: DemoTrace }) {
+  const links = actionLinksForTrace(trace, fallback);
+  return (
+    <>
+      {links.map((link, index) => (
+        <Link
+          className={index === 0 ? "inline-flex items-center gap-2 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white" : "inline-flex items-center gap-2 rounded-md border border-line px-4 py-2 text-sm font-semibold"}
+          href={link.href}
+          key={`${link.href}-${link.label}`}
+        >
+          {link.label}
+          {link.external ? <ExternalLink size={14} /> : <ArrowRight size={15} />}
+        </Link>
+      ))}
+    </>
+  );
+}
+
+function actionLinksForTrace(trace: DemoTrace, fallback?: { href: string; label: string }) {
+  const links: Array<{ href: string; label: string; external?: boolean }> = [];
+  const actionTypes = new Set(trace.actions.map((action) => action.type));
+
+  if (trace.approval || trace.guardian.approval_required || actionTypes.has("request_approval")) {
+    links.push({ href: "/tasks#approval-inbox", label: trace.approval ? "Open saved approval" : "Review approval" });
+  }
+  if (actionTypes.has("draft_email")) links.push({ href: "/tasks#approval-inbox", label: "Review email draft" });
+  if (actionTypes.has("draft_calendar_event")) links.push({ href: "/tasks#approval-inbox", label: "Review calendar draft" });
+  if (actionTypes.has("create_prep_tasks") || actionTypes.has("create_travel_tasks") || actionTypes.has("review_conflicts")) links.push({ href: "/tasks", label: "Open related tasks" });
+  if (actionTypes.has("open_capture") || trace.intent === "capture_request") links.push({ href: "/capture", label: "Open Capture" });
+  if (actionTypes.has("open_health_check_in") || trace.intent === "health_request") links.push({ href: "/health", label: "Open Health" });
+  if (actionTypes.has("suggest_job_search") || actionTypes.has("update_growth_plan") || trace.intent === "career_request") links.push({ href: "/growth", label: "Open Growth" });
+  if (actionTypes.has("open_guardian_map") || trace.intent === "emergency_alert") links.push({ href: "/map", label: "Open Guardian Map" });
+  links.push({ href: "/activity", label: "View trace" });
+
+  if (fallback && !links.some((link) => link.href === fallback.href)) links.unshift({ href: fallback.href, label: fallback.label });
+  return dedupeLinks(links).slice(0, 4);
+}
+
+function dedupeLinks(links: Array<{ href: string; label: string; external?: boolean }>) {
+  const seen = new Set<string>();
+  return links.filter((link) => {
+    const key = `${link.href}-${link.label}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function describeCreatedThings(trace: DemoTrace) {
+  const actionTypes = new Set(trace.actions.map((action) => action.type));
+  const parts: string[] = [];
+  if (trace.approval || actionTypes.has("request_approval")) parts.push("approval-ready action");
+  if (actionTypes.has("draft_email")) parts.push("email draft");
+  if (actionTypes.has("draft_calendar_event")) parts.push("calendar event draft");
+  if (actionTypes.has("create_prep_tasks")) parts.push("meeting prep tasks");
+  if (actionTypes.has("create_travel_tasks")) parts.push("travel checks");
+  if (actionTypes.has("review_conflicts")) parts.push("conflict review");
+  if (actionTypes.has("show_travel_guardian")) parts.push("Travel Guardian briefing");
+  if (actionTypes.has("open_capture")) parts.push("capture workspace handoff");
+  if (actionTypes.has("open_health_check_in")) parts.push("health check-in handoff");
+  if (actionTypes.has("suggest_job_search")) parts.push("career next step");
+  if (actionTypes.has("show_insight") || actionTypes.has("save_to_memory")) parts.push("memory insight");
+  return parts.length ? parts.join(", ") : "one recommendation and full activity trace";
+}
+
+function nextStepForTrace(trace: DemoTrace) {
+  if (trace.approval) return "Open the Approval Inbox and approve, edit, or reject it.";
+  if (trace.guardian.approval_required) return "Review the guarded action before anything external changes.";
+  if (trace.intent === "capture_request") return "Open Capture and paste notes, a transcript, or a YouTube link.";
+  if (trace.intent === "health_request") return "Open Health and add today’s check-in or sync data.";
+  if (trace.intent === "career_request") return "Open Growth to track a course, job, or profile improvement.";
+  if (trace.intent === "emergency_alert") return "Open Guardian Map and run a live location check.";
+  return "Open the linked page or Activity trace to continue.";
 }
 
 function formatAgent(value: string) {

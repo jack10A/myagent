@@ -74,6 +74,7 @@ def clear_profile_memory() -> dict[str, Any]:
     ACTIVITY_FILE.write_text("[]", encoding="utf-8")
     delete_memory_value("demo_approvals")
     delete_memory_value("demo_activity")
+    delete_memory_value("demo_task_state")
     saved = model.model_dump()
     write_memory_value(PROFILE_MEMORY_KEY, saved)
     return saved

@@ -21,6 +21,7 @@ from app.notifications.router import router as notifications_router
 from app.onboarding.router import router as onboarding_router
 from app.orchestration.router import router as orchestration_router
 from app.profile.router import router as profile_router
+from app.tasks.router import router as tasks_router
 from app.users.router import router as users_router
 
 app = FastAPI(title="MyAgent API", version="0.1.0")
@@ -70,3 +71,4 @@ app.include_router(guardian_router, prefix="/api/guardian", tags=["guardian"])
 app.include_router(notifications_router, prefix="/api/notifications", tags=["notifications"])
 app.include_router(growth_router, prefix="/api/growth", tags=["growth"])
 app.include_router(health_router, prefix="/api/health", tags=["health"])
+app.include_router(tasks_router, prefix="/api/tasks", tags=["tasks"])

@@ -22,6 +22,7 @@ import { getCaptureTasks, type CaptureTask } from "@/lib/capture";
 import { getHealthSummary, type HealthSummary } from "@/lib/health";
 import { getJobs, type JobTask } from "@/lib/jobs";
 import { getLearning, type LearningTask } from "@/lib/learning";
+import { clearTaskState, getTaskState, setTaskStatus } from "@/lib/tasks";
 
 type Focus = "all" | "approval" | "calendar" | "travel" | "career" | "learning" | "health" | "capture";
 type Priority = "urgent" | "high" | "medium" | "low";
@@ -49,19 +50,20 @@ export function TaskCommandCenter() {
   const [health, setHealth] = useState<HealthSummary | null>(null);
   const [focus, setFocus] = useState<Focus>("all");
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  const [savingId, setSavingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("Loading your action plan...");
 
   async function load() {
     setLoading(true);
-    setHiddenIds(new Set());
-    const [approvalResult, calendarResult, jobResult, learningResult, captureResult, healthResult] = await Promise.allSettled([
+    const [approvalResult, calendarResult, jobResult, learningResult, captureResult, healthResult, taskStateResult] = await Promise.allSettled([
       getApprovals(),
       getCalendarAgenda(),
       getJobs(),
       getLearning(),
       getCaptureTasks(),
-      getHealthSummary()
+      getHealthSummary(),
+      getTaskState()
     ]);
 
     if (approvalResult.status === "fulfilled") setApprovals(approvalResult.value.approvals);
@@ -70,9 +72,10 @@ export function TaskCommandCenter() {
     if (learningResult.status === "fulfilled") setLearning(learningResult.value.tasks);
     if (captureResult.status === "fulfilled") setCaptures(captureResult.value.tasks);
     if (healthResult.status === "fulfilled") setHealth(healthResult.value);
+    if (taskStateResult.status === "fulfilled") setHiddenIds(new Set(taskStateResult.value.hidden_ids));
 
-    const failed = [approvalResult, calendarResult, jobResult, learningResult, captureResult, healthResult].filter((result) => result.status === "rejected").length;
-    setStatus(failed ? `${6 - failed}/6 task sources loaded. Some agents need the backend or connector data.` : "All task sources loaded.");
+    const failed = [approvalResult, calendarResult, jobResult, learningResult, captureResult, healthResult, taskStateResult].filter((result) => result.status === "rejected").length;
+    setStatus(failed ? `${7 - failed}/7 task sources loaded. Some agents need the backend or connector data.` : "All task sources loaded.");
     setLoading(false);
   }
 
@@ -127,8 +130,8 @@ export function TaskCommandCenter() {
 
             {hiddenCount ? (
               <div className="mt-3 flex flex-col gap-3 rounded-md border border-line bg-panel p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-                <span>{hiddenCount} item(s) hidden from the cockpit. Detailed task sections still show the source records.</span>
-                <button className="inline-flex w-fit items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-semibold" onClick={() => setHiddenIds(new Set())} type="button">
+                <span>{hiddenCount} item(s) completed or snoozed. Detailed task sections still show the source records.</span>
+                <button className="inline-flex w-fit items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-semibold" onClick={() => void restoreTasks()} type="button">
                   <TimerReset size={15} />
                   Restore
                 </button>
@@ -151,9 +154,9 @@ export function TaskCommandCenter() {
                 {top ? (
                   <>
                     <button className="rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold" onClick={() => hideItem(top.id)} type="button">
-                      Mark done
+                      {savingId === top.id ? "Saving..." : "Mark done"}
                     </button>
-                    <button className="rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold" onClick={() => hideItem(top.id)} type="button">
+                    <button className="rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold" onClick={() => snoozeItem(top.id)} type="button">
                       Snooze
                     </button>
                   </>
@@ -214,7 +217,7 @@ export function TaskCommandCenter() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        {filtered.slice(0, 6).map((item) => <ActionCard item={item} key={item.id} onHide={hideItem} />)}
+        {filtered.slice(0, 6).map((item) => <ActionCard item={item} key={item.id} onDone={hideItem} onSnooze={snoozeItem} saving={savingId === item.id} />)}
         {!filtered.length ? (
           <div className="rounded-md border border-dashed border-line bg-white p-5 text-sm text-ink/60 shadow-soft lg:col-span-3">
             No tasks for this filter yet. MyAgent will add them as you track jobs, learning resources, approvals, captures, health, and calendar prep.
@@ -224,8 +227,38 @@ export function TaskCommandCenter() {
     </section>
   );
 
-  function hideItem(id: string) {
+  async function hideItem(id: string) {
     setHiddenIds((current) => new Set([...current, id]));
+    setSavingId(id);
+    try {
+      await setTaskStatus(id, "done");
+    } catch {
+      setStatus("Task was hidden locally, but the backend did not save it yet.");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function snoozeItem(id: string) {
+    setHiddenIds((current) => new Set([...current, id]));
+    setSavingId(id);
+    try {
+      await setTaskStatus(id, "snoozed");
+    } catch {
+      setStatus("Task was snoozed locally, but the backend did not save it yet.");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function restoreTasks() {
+    setHiddenIds(new Set());
+    try {
+      await clearTaskState();
+      setStatus("Task progress restored.");
+    } catch {
+      setStatus("Tasks restored locally, but the backend reset did not finish.");
+    }
   }
 }
 
@@ -372,7 +405,17 @@ function buildActions({
   return actions.sort((a, b) => priorityRank[b.priority] - priorityRank[a.priority]);
 }
 
-function ActionCard({ item, onHide }: { item: ActionItem; onHide: (id: string) => void }) {
+function ActionCard({
+  item,
+  onDone,
+  onSnooze,
+  saving
+}: {
+  item: ActionItem;
+  onDone: (id: string) => void;
+  onSnooze: (id: string) => void;
+  saving: boolean;
+}) {
   const Icon = iconFor(item.kind);
   return (
     <article className="rounded-md border border-line bg-white p-5 shadow-soft">
@@ -391,10 +434,10 @@ function ActionCard({ item, onHide }: { item: ActionItem; onHide: (id: string) =
           {item.action}
           <ChevronRight size={14} />
         </Link>
-        <button className="rounded-md border border-line px-3 py-2 text-sm font-semibold" onClick={() => onHide(item.id)} type="button">
-          Done
+        <button className="rounded-md border border-line px-3 py-2 text-sm font-semibold" disabled={saving} onClick={() => onDone(item.id)} type="button">
+          {saving ? "Saving..." : "Done"}
         </button>
-        <button className="rounded-md border border-line px-3 py-2 text-sm font-semibold" onClick={() => onHide(item.id)} type="button">
+        <button className="rounded-md border border-line px-3 py-2 text-sm font-semibold" disabled={saving} onClick={() => onSnooze(item.id)} type="button">
           Snooze
         </button>
       </div>

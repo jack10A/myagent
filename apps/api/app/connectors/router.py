@@ -348,7 +348,7 @@ def fetch_recent_gmail_messages(token: str) -> list[dict]:
     with httpx.Client(timeout=20, headers=google_headers(token)) as client:
         list_response = client.get(
             "https://gmail.googleapis.com/gmail/v1/users/me/messages",
-            params={"maxResults": 10, "q": "newer_than:30d"},
+            params={"maxResults": 50, "q": "newer_than:90d -category:promotions"},
         )
         list_response.raise_for_status()
         message_refs = list_response.json().get("messages", [])
@@ -416,29 +416,76 @@ def fetch_calendar_events(token: str) -> list[dict]:
 
 
 def summarize_important_messages(messages: list[dict]) -> list[dict]:
-    important_terms = [
-        "urgent",
-        "asap",
-        "important",
-        "deadline",
-        "interview",
-        "offer",
-        "meeting",
-        "invoice",
-        "action required",
-        "security",
-        "verification",
+    high_value_terms = {
+        "urgent": 3,
+        "asap": 3,
+        "action required": 3,
+        "deadline": 3,
+        "interview": 4,
+        "assessment": 3,
+        "technical test": 3,
+        "offer": 4,
+        "accepted": 3,
+        "congratulations": 3,
+        "shortlisted": 4,
+        "meeting": 2,
+        "workshop": 2,
+        "internship": 4,
+        "application": 2,
+        "recruiter": 3,
+        "hiring": 3,
+        "career": 2,
+        "program": 2,
+        "feedback": 2,
+        "follow up": 2,
+        "confirm": 2,
+        "availability": 3,
+        "zoom": 2,
+        "calendar": 2,
+        "invitation": 2,
+        "invoice": 2,
+        "payment": 2,
+    }
+    positive_senders = [
+        "recruit",
+        "talent",
+        "careers",
+        "hr",
+        "internship",
+        "nokia",
+        "mckinsey",
+        "linkedin",
+        "learning",
+        "development",
+        "university",
+    ]
+    low_value_terms = [
+        "unsubscribe",
+        "coupon",
+        "discount",
+        "reward",
+        "shop",
+        "sale",
+        "promo",
+        "temu",
+        "newsletter",
     ]
     important = []
     for message in messages:
-        haystack = f"{message.get('subject') or ''} {message.get('snippet') or ''}".lower()
+        haystack = f"{message.get('subject') or ''} {message.get('from') or ''} {message.get('snippet') or ''}".lower()
         if is_auth_or_verification_message(message, haystack):
             continue
-        score = sum(1 for term in important_terms if term in haystack)
+        score = sum(weight for term, weight in high_value_terms.items() if term in haystack)
+        score += sum(2 for term in positive_senders if term in haystack)
+        score -= sum(3 for term in low_value_terms if term in haystack)
         if "IMPORTANT" in message.get("label_ids", []):
             score += 2
-        if score > 0:
-            important.append({**message, "importance_score": score})
+        if "STARRED" in message.get("label_ids", []):
+            score += 2
+        if "CATEGORY_PROMOTIONS" in message.get("label_ids", []):
+            score -= 4
+        if score >= 2:
+            important.append({**message, "importance_score": max(score, 1)})
     return sorted(important, key=lambda item: item["importance_score"], reverse=True)
 
 

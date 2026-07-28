@@ -438,7 +438,7 @@ function GmailInboxPreview({ gmail }: { gmail: NonNullable<MyAgentProfile["gmail
             </div>
           </div>
           <p className="mt-4 text-sm leading-6 text-ink/65">
-            MyAgent scanned {gmail.recent_scanned ?? 0} recent emails and found {important.length} important-looking signal(s). Approved email actions can become Gmail drafts.
+            MyAgent scanned {gmail.recent_scanned ?? 0} recent emails for career, study, deadline, meeting, and action signals. It found {important.length} important-looking signal(s). Approved email actions can become Gmail drafts.
           </p>
         </div>
         <a className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white" href={`${API_URL}/connectors/gmail/start`}>
@@ -464,7 +464,7 @@ function GmailInboxPreview({ gmail }: { gmail: NonNullable<MyAgentProfile["gmail
           <div className="rounded-md border border-line bg-panel p-4">
             <h3 className="text-sm font-semibold">No important messages in the latest scan</h3>
             <p className="mt-2 text-sm leading-6 text-ink/65">
-              Gmail is connected. MyAgent did not find urgent keywords in the latest scanned emails.
+              Gmail is connected. MyAgent did not find career, study, deadline, meeting, or action signals in the latest scanned emails.
             </p>
           </div>
         )}

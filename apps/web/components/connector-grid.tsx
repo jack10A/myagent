@@ -36,15 +36,16 @@ export function ConnectorGrid() {
   useEffect(() => {
     const linkedin = profile?.linkedin;
     if (!linkedin) return;
+    const draft = suggestedLinkedInDetails(profile);
     setLinkedinForm({
-      profile_url: linkedin.profile_url ?? "",
-      headline: linkedin.headline ?? "",
-      current_role: linkedin.current_role ?? "",
-      target_role: linkedin.target_role ?? "",
-      skills: (linkedin.skills ?? []).join(", "),
-      about: linkedin.about ?? ""
+      profile_url: linkedin.profile_url || draft.profile_url,
+      headline: linkedin.headline || draft.headline,
+      current_role: linkedin.current_role || draft.current_role,
+      target_role: linkedin.target_role || draft.target_role,
+      skills: (linkedin.skills ?? []).join(", ") || draft.skills,
+      about: linkedin.about || draft.about
     });
-  }, [profile?.linkedin]);
+  }, [profile]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -421,7 +422,7 @@ function CalendarPreview({ calendar }: { calendar: NonNullable<MyAgentProfile["c
 }
 
 function GmailInboxPreview({ gmail }: { gmail: NonNullable<MyAgentProfile["gmail"]> }) {
-  const important = gmail.important_messages ?? [];
+  const important = (gmail.important_messages ?? []).filter((message) => !isAuthOrVerificationEmail(message));
 
   return (
     <section className="rounded-md border border-teal/40 bg-white p-5 shadow-soft">
@@ -437,7 +438,7 @@ function GmailInboxPreview({ gmail }: { gmail: NonNullable<MyAgentProfile["gmail
             </div>
           </div>
           <p className="mt-4 text-sm leading-6 text-ink/65">
-            MyAgent scanned {gmail.recent_scanned ?? 0} recent emails and found {gmail.important_count ?? important.length} important-looking signal(s). Approved email actions can become Gmail drafts.
+            MyAgent scanned {gmail.recent_scanned ?? 0} recent emails and found {important.length} important-looking signal(s). Approved email actions can become Gmail drafts.
           </p>
         </div>
         <a className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white" href={`${API_URL}/connectors/gmail/start`}>
@@ -470,4 +471,32 @@ function GmailInboxPreview({ gmail }: { gmail: NonNullable<MyAgentProfile["gmail
       </div>
     </section>
   );
+}
+
+function suggestedLinkedInDetails(profile: MyAgentProfile) {
+  const name = profile.linkedin?.given_name || profile.name || "Jack";
+  const skills = ["Python", "FastAPI", "React", "TypeScript", "Next.js", "AI Agents", "LangGraph", "PostgreSQL", "GitHub", "Docker"];
+  return {
+    profile_url: "https://www.linkedin.com/in/jack-ashraf/",
+    headline: "AI student building full-stack agent apps",
+    current_role: "Student / AI builder",
+    target_role: "AI Software Engineer Intern",
+    skills: skills.join(", "),
+    about: `${name} is an AI and software engineering student building practical full-stack AI applications. I work with Python, FastAPI, React, and agentic AI systems, and I enjoy turning real user problems into usable products. My current focus is MyAgent, a proactive AI assistant platform that connects Gmail, Calendar, GitHub, LinkedIn, CV, health, memory, and approvals into one personalized agent experience. I am looking for AI Software Engineering or Full-Stack Internship opportunities where I can build reliable, useful AI-powered tools.`
+  };
+}
+
+function isAuthOrVerificationEmail(message: { subject?: string | null; from?: string | null; snippet?: string | null }) {
+  const text = `${message.subject ?? ""} ${message.from ?? ""} ${message.snippet ?? ""}`.toLowerCase();
+  return [
+    "verification code",
+    "verify it's you",
+    "verify it&#39;s you",
+    "security code",
+    "one-time code",
+    "2-step verification",
+    "two-factor",
+    "sign-in attempt",
+    "login code"
+  ].some((term) => text.includes(term));
 }

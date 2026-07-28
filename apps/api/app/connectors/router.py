@@ -226,7 +226,9 @@ def linkedin_callback(code: str = Query(...), state: str | None = Query(default=
 
     token = exchange_linkedin_code(code)
     profile = fetch_linkedin_userinfo(token)
+    current_linkedin = (read_profile().get("linkedin") or {})
     linkedin_profile = {
+        **{key: value for key, value in current_linkedin.items() if key in {"profile_url", "headline", "current_role", "target_role", "skills", "about"}},
         "sub": profile.get("sub"),
         "name": profile.get("name"),
         "given_name": profile.get("given_name"),
@@ -430,12 +432,30 @@ def summarize_important_messages(messages: list[dict]) -> list[dict]:
     important = []
     for message in messages:
         haystack = f"{message.get('subject') or ''} {message.get('snippet') or ''}".lower()
+        if is_auth_or_verification_message(message, haystack):
+            continue
         score = sum(1 for term in important_terms if term in haystack)
         if "IMPORTANT" in message.get("label_ids", []):
             score += 2
         if score > 0:
             important.append({**message, "importance_score": score})
     return sorted(important, key=lambda item: item["importance_score"], reverse=True)
+
+
+def is_auth_or_verification_message(message: dict, haystack: str | None = None) -> bool:
+    text = haystack or f"{message.get('subject') or ''} {message.get('from') or ''} {message.get('snippet') or ''}".lower()
+    auth_terms = [
+        "verification code",
+        "verify it's you",
+        "verify it&#39;s you",
+        "security code",
+        "one-time code",
+        "2-step verification",
+        "two-factor",
+        "sign-in attempt",
+        "login code",
+    ]
+    return any(term in text for term in auth_terms)
 
 
 def fetch_github_profile(token: str) -> dict:

@@ -53,7 +53,9 @@ export function ConnectorGrid() {
 
     try {
       const linkedin = JSON.parse(rawLinkedIn) as NonNullable<MyAgentProfile["linkedin"]>;
-      saveProfile({ linkedin })
+      getProfile()
+        .catch(() => null)
+        .then((currentProfile) => saveProfile({ linkedin: { ...(currentProfile?.linkedin ?? {}), ...linkedin } }))
         .then(({ profile: savedProfile }) => {
           setProfile(savedProfile);
           setSyncStatus("LinkedIn synced into this MyAgent profile.");
@@ -318,7 +320,7 @@ function LinkedInPreview({ linkedin }: { linkedin: NonNullable<MyAgentProfile["l
 }
 
 function GitHubPreview({ github }: { github: NonNullable<MyAgentProfile["github"]> }) {
-  const languages = Object.entries(github.top_languages ?? {});
+  const languages = Object.entries(github.top_languages ?? {}).sort((first, second) => Number(second[1]) - Number(first[1]));
 
   return (
     <section className="rounded-md border border-gold/40 bg-white p-5 shadow-soft">

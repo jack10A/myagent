@@ -18,13 +18,13 @@ def build_growth_plan(context: dict) -> dict:
     linkedin = context.get("linkedin") or {}
     gmail = context.get("gmail") or {}
     cv = context.get("cv") or {}
-    github_languages = list((github.get("top_languages") or {}).keys())
+    github_languages = ranked_languages(github.get("top_languages") or {})
     skills = merge_unique(context.get("skills") or [], github_languages) or ["problem solving", "communication"]
     skill_gaps = merge_unique(context.get("skill_gaps") or [], inferred_skill_gaps(skills, role)) or ["portfolio projects", "interview practice", "AI tooling"]
 
     track = "student" if "student" in life_stage else "professional"
     repos_scanned = github.get("repos_scanned") or github.get("public_repos") or 0
-    strongest_language = github_languages[0] if github_languages else None
+    strongest_language = strongest_developer_language(github.get("top_languages") or {}, skills)
     important_emails = gmail.get("important_messages") or []
     career_emails = career_related_emails(important_emails)
     linkedin_complete = linkedin_profile_completeness(linkedin)
@@ -132,6 +132,39 @@ def merge_unique(first: list[str], second: list[str]) -> list[str]:
     return merged[:12]
 
 
+def ranked_languages(language_counts: dict) -> list[str]:
+    return [
+        str(language)
+        for language, _count in sorted(
+            language_counts.items(),
+            key=lambda item: (developer_language_weight(str(item[0])), int(item[1] or 0)),
+            reverse=True,
+        )
+    ]
+
+
+def strongest_developer_language(language_counts: dict, skills: list[str]) -> str | None:
+    ranked = ranked_languages(language_counts)
+    normalized_skills = {skill.lower() for skill in skills}
+    for preferred in ["Python", "TypeScript", "JavaScript", "Jupyter Notebook", "React", "FastAPI"]:
+        if preferred in ranked or preferred.lower() in normalized_skills:
+            return "Python" if preferred == "Jupyter Notebook" else preferred
+    return ranked[0] if ranked else None
+
+
+def developer_language_weight(language: str) -> int:
+    weights = {
+        "Python": 7,
+        "TypeScript": 6,
+        "JavaScript": 5,
+        "Jupyter Notebook": 4,
+        "SQL": 3,
+        "PHP": 2,
+        "R": 2,
+    }
+    return weights.get(language, 1)
+
+
 def github_match_reason(industry: str, repos_scanned: int, strongest_language: str | None) -> str:
     if repos_scanned and strongest_language:
         return f"Matches your {industry} direction and GitHub proof-of-work: {repos_scanned} repos scanned, strongest signal is {strongest_language}."
@@ -160,6 +193,8 @@ def career_related_emails(messages: list[dict]) -> list[dict]:
     career = []
     for message in messages:
         haystack = f"{message.get('subject') or ''} {message.get('from') or ''} {message.get('snippet') or ''}".lower()
+        if is_auth_or_verification_message(haystack):
+            continue
         if any(keyword in haystack for keyword in keywords):
             career.append(
                 {
@@ -169,6 +204,21 @@ def career_related_emails(messages: list[dict]) -> list[dict]:
                 }
             )
     return career
+
+
+def is_auth_or_verification_message(text: str) -> bool:
+    auth_terms = [
+        "verification code",
+        "verify it's you",
+        "verify it&#39;s you",
+        "security code",
+        "one-time code",
+        "2-step verification",
+        "two-factor",
+        "sign-in attempt",
+        "login code",
+    ]
+    return any(term in text for term in auth_terms)
 
 
 def readiness_score(repos_scanned: int, skills: list[str], career_emails: list[dict], has_cv: bool, has_linkedin: bool = False, linkedin_complete: int = 0) -> int:

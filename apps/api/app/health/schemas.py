@@ -1,4 +1,7 @@
-from pydantic import BaseModel, Field
+import re
+from typing import Any
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class HealthCheckIn(BaseModel):
@@ -37,3 +40,32 @@ class HealthShortcutSync(BaseModel):
     source: str = "ios_shortcut"
     synced_for: str | None = None
     notes: str | None = None
+
+    @field_validator(
+        "steps",
+        "active_calories",
+        "distance_km",
+        "exercise_minutes",
+        "stand_hours",
+        "sleep_hours",
+        "resting_heart_rate",
+        mode="before",
+    )
+    @classmethod
+    def coerce_shortcut_number(cls, value: Any) -> Any:
+        if value is None or isinstance(value, (int, float)):
+            return value
+        if isinstance(value, list):
+            return cls.coerce_shortcut_number(value[0]) if value else None
+        if isinstance(value, dict):
+            for key in ("value", "Value", "quantity", "Quantity", "amount", "Amount"):
+                if key in value:
+                    return cls.coerce_shortcut_number(value[key])
+            return cls.coerce_shortcut_number(" ".join(str(part) for part in value.values()))
+
+        text = str(value).replace(",", "").strip()
+        match = re.search(r"-?\d+(?:\.\d+)?", text)
+        if not match:
+            return None
+        number = float(match.group(0))
+        return int(number) if number.is_integer() else number

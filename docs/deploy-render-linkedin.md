@@ -24,7 +24,10 @@ Set these in Render -> `myagent-api` -> Environment:
 
 ```text
 JWT_SECRET=your jwt secret
-ANTHROPIC_API_KEY=your anthropic key
+AI_PROVIDER=litellm
+AI_MODEL=anthropic/claude-haiku-4-5
+LITELLM_API_BASE=https://litellm.i-hq.tech/v1
+LITELLM_API_KEY=your LiteLLM key
 LINKEDIN_CLIENT_ID=your linkedin client id
 LINKEDIN_CLIENT_SECRET=your linkedin client secret
 LINKEDIN_REDIRECT_URI=https://YOUR-RENDER-URL/api/connectors/linkedin/callback

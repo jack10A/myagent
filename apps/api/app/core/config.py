@@ -28,10 +28,12 @@ class Settings(BaseSettings):
     jwt_secret: str = Field(default="change-me", min_length=8)
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 1440
-    ai_provider: str = "anthropic"
-    ai_model: str = "claude-sonnet-4-5"
+    ai_provider: str = "litellm"
+    ai_model: str = "anthropic/claude-haiku-4-5"
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
+    litellm_api_key: str | None = None
+    litellm_api_base: str = "https://litellm.i-hq.tech/v1"
     weather_api_key: str | None = None
     google_client_id: str | None = None
     google_client_secret: str | None = None

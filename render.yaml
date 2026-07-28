@@ -19,7 +19,13 @@ services:
         value: '["http://localhost:3000"]'
       - key: JWT_SECRET
         sync: false
-      - key: ANTHROPIC_API_KEY
+      - key: AI_PROVIDER
+        value: litellm
+      - key: AI_MODEL
+        value: anthropic/claude-haiku-4-5
+      - key: LITELLM_API_BASE
+        value: https://litellm.i-hq.tech/v1
+      - key: LITELLM_API_KEY
         sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false

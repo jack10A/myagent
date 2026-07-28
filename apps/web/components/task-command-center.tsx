@@ -26,10 +26,12 @@ import { clearTaskState, getTaskState, setTaskStatus, taskStateId } from "@/lib/
 
 type Focus = "all" | "approval" | "calendar" | "travel" | "career" | "learning" | "health" | "capture";
 type Priority = "urgent" | "high" | "medium" | "low";
+type DueBucket = "all" | "today" | "tomorrow" | "this_week" | "later";
 
 type ActionItem = {
   id: string;
   kind: Focus;
+  dueBucket: Exclude<DueBucket, "all">;
   title: string;
   body: string;
   priority: Priority;
@@ -40,6 +42,7 @@ type ActionItem = {
 };
 
 const priorityRank: Record<Priority, number> = { urgent: 4, high: 3, medium: 2, low: 1 };
+const dueBucketRank: Record<Exclude<DueBucket, "all">, number> = { today: 4, tomorrow: 3, this_week: 2, later: 1 };
 
 export function TaskCommandCenter() {
   const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
@@ -49,6 +52,7 @@ export function TaskCommandCenter() {
   const [captures, setCaptures] = useState<CaptureTask[]>([]);
   const [health, setHealth] = useState<HealthSummary | null>(null);
   const [focus, setFocus] = useState<Focus>("all");
+  const [dueFilter, setDueFilter] = useState<DueBucket>("all");
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
   const [savingId, setSavingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -87,13 +91,15 @@ export function TaskCommandCenter() {
     return buildActions({ approvals, agenda, jobs, learning, captures, health }).filter((item) => !hiddenIds.has(item.id));
   }, [approvals, agenda, jobs, learning, captures, health, hiddenIds]);
 
-  const filtered = focus === "all" ? items : items.filter((item) => item.kind === focus);
+  const sourceFiltered = focus === "all" ? items : items.filter((item) => item.kind === focus);
+  const filtered = dueFilter === "all" ? sourceFiltered : sourceFiltered.filter((item) => item.dueBucket === dueFilter);
   const top = filtered[0] ?? items[0];
   const urgentCount = items.filter((item) => item.priority === "urgent" || item.priority === "high").length;
   const pendingApprovals = approvals.filter((item) => item.status === "pending" || item.status === "editing").length;
   const activeWork = items.length;
   const rawItemCount = buildActions({ approvals, agenda, jobs, learning, captures, health }).length;
   const hiddenCount = rawItemCount - items.length;
+  const bucketCounts = bucketSummary(items);
 
   return (
     <section className="space-y-4">
@@ -128,6 +134,13 @@ export function TaskCommandCenter() {
               <Metric label="Active work" value={String(activeWork)} tone="teal" />
             </div>
 
+            <div className="mt-3 grid gap-2 sm:grid-cols-4">
+              <BucketMetric label="Today" value={bucketCounts.today} active={dueFilter === "today"} onClick={() => setDueFilter(dueFilter === "today" ? "all" : "today")} />
+              <BucketMetric label="Tomorrow" value={bucketCounts.tomorrow} active={dueFilter === "tomorrow"} onClick={() => setDueFilter(dueFilter === "tomorrow" ? "all" : "tomorrow")} />
+              <BucketMetric label="This week" value={bucketCounts.this_week} active={dueFilter === "this_week"} onClick={() => setDueFilter(dueFilter === "this_week" ? "all" : "this_week")} />
+              <BucketMetric label="Later" value={bucketCounts.later} active={dueFilter === "later"} onClick={() => setDueFilter(dueFilter === "later" ? "all" : "later")} />
+            </div>
+
             {hiddenCount ? (
               <div className="mt-3 flex flex-col gap-3 rounded-md border border-line bg-panel p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
                 <span>{hiddenCount} item(s) completed or snoozed. Detailed task sections still show the source records.</span>
@@ -146,6 +159,7 @@ export function TaskCommandCenter() {
               </p>
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 {top ? <span className={`rounded-md px-2 py-1 text-xs font-semibold ${priorityClass(top.priority)}`}>{top.priority}</span> : null}
+                {top ? <span className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-ink/55">{dueBucketLabel(top.dueBucket)}</span> : null}
                 {top ? <span className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-ink/55">{top.source}</span> : null}
                 <Link className="inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-semibold text-white" href={top?.href ?? "/growth"}>
                   {top?.action ?? "Open Growth"}
@@ -216,8 +230,35 @@ export function TaskCommandCenter() {
         ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        {filtered.slice(0, 6).map((item) => <ActionCard item={item} key={item.id} onDone={hideItem} onSnooze={snoozeItem} saving={savingId === item.id} />)}
+      <div className="flex flex-wrap gap-2">
+        {(["all", "today", "tomorrow", "this_week", "later"] as DueBucket[]).map((item) => (
+          <button
+            className={`rounded-md border px-3 py-2 text-sm font-semibold ${dueFilter === item ? "border-teal bg-teal text-white" : "border-line bg-white text-ink/70"}`}
+            key={item}
+            onClick={() => setDueFilter(item)}
+            type="button"
+          >
+            {item === "all" ? "all time" : dueBucketLabel(item)}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-4">
+        {(["today", "tomorrow", "this_week", "later"] as const).map((bucket) => {
+          const bucketItems = filtered.filter((item) => item.dueBucket === bucket).slice(0, 6);
+          if (!bucketItems.length) return null;
+          return (
+            <section className="space-y-3" key={bucket}>
+              <div className="flex items-center justify-between rounded-md border border-line bg-white px-4 py-3 shadow-soft">
+                <h3 className="font-semibold">{dueBucketLabel(bucket)}</h3>
+                <span className="rounded-md bg-panel px-2 py-1 text-xs font-semibold text-ink/55">{bucketItems.length} active</span>
+              </div>
+              <div className="grid gap-4 lg:grid-cols-3">
+                {bucketItems.map((item) => <ActionCard item={item} key={item.id} onDone={hideItem} onSnooze={snoozeItem} saving={savingId === item.id} />)}
+              </div>
+            </section>
+          );
+        })}
         {!filtered.length ? (
           <div className="rounded-md border border-dashed border-line bg-white p-5 text-sm text-ink/60 shadow-soft lg:col-span-3">
             No tasks for this filter yet. MyAgent will add them as you track jobs, learning resources, approvals, captures, health, and calendar prep.
@@ -288,6 +329,7 @@ function buildActions({
       actions.push({
         id: taskStateId("approval", item.id),
         kind: "approval",
+        dueBucket: "today",
         title: item.recommendation.title || "Approval waiting",
         body: item.guardian.reason || item.recommendation.rationale || "Guardian is waiting for your decision.",
         priority: "high",
@@ -302,6 +344,7 @@ function buildActions({
     actions.push({
       id: `calendar-conflict-${index}-${conflict.title}`,
       kind: "calendar",
+      dueBucket: dueBucketFromText(conflict.when) ?? "today",
       title: conflict.title || "Calendar conflict",
       body: (conflict.events ?? []).join(" and ") || "Calendar Agent found a possible overlap.",
       priority: "high",
@@ -316,6 +359,7 @@ function buildActions({
     actions.push({
       id: taskStateId("travel", risk.id),
       kind: "travel",
+      dueBucket: dueBucketFromIso(risk.event?.start) ?? dueBucketFromText(risk.when) ?? "this_week",
       title: risk.title,
       body: risk.reason,
       priority: risk.severity === "urgent" ? "urgent" : risk.severity === "warning" ? "high" : "medium",
@@ -330,6 +374,7 @@ function buildActions({
     actions.push({
       id: taskStateId("calendar-task", task.id),
       kind: "calendar",
+      dueBucket: dueBucketFromIso(task.event?.start) ?? dueBucketFromText(task.when) ?? "this_week",
       title: task.title,
       body: task.steps[0] || "Prepare for this event.",
       priority: task.priority === "high" ? "high" : "medium",
@@ -343,6 +388,7 @@ function buildActions({
     actions.push({
       id: taskStateId("job", job.id),
       kind: "career",
+      dueBucket: "this_week",
       title: `Move forward: ${job.title}`,
       body: job.next_step || "Continue application prep.",
       priority: job.status === "interview" || job.status === "offer" ? "high" : "medium",
@@ -357,6 +403,7 @@ function buildActions({
     actions.push({
       id: taskStateId("learning", task.id),
       kind: "learning",
+      dueBucket: "this_week",
       title: task.title,
       body: task.next_step.task,
       priority: task.priority >= 90 ? "medium" : "low",
@@ -370,6 +417,7 @@ function buildActions({
     actions.push({
       id: taskStateId("capture", task.id),
       kind: "capture",
+      dueBucket: "today",
       title: task.title,
       body: `Follow up from ${task.source_title || task.capture_type}.`,
       priority: "medium",
@@ -383,6 +431,7 @@ function buildActions({
     actions.push({
       id: "health-urgent",
       kind: "health",
+      dueBucket: "today",
       title: "Health warning",
       body: health.urgent_warning,
       priority: "urgent",
@@ -396,6 +445,7 @@ function buildActions({
     actions.push({
       id: `health-${index}-${insight.title}`,
       kind: "health",
+      dueBucket: insight.severity === "warning" ? "today" : "this_week",
       title: insight.title,
       body: insight.body,
       priority: insight.severity === "warning" ? "medium" : "low",
@@ -405,7 +455,7 @@ function buildActions({
     });
   });
 
-  return actions.sort((a, b) => priorityRank[b.priority] - priorityRank[a.priority]);
+  return actions.sort((a, b) => dueBucketRank[b.dueBucket] - dueBucketRank[a.dueBucket] || priorityRank[b.priority] - priorityRank[a.priority]);
 }
 
 function ActionCard({
@@ -426,7 +476,10 @@ function ActionCard({
         <span className="flex h-10 w-10 items-center justify-center rounded-md bg-panel">
           <Icon size={18} className={item.priority === "urgent" || item.priority === "high" ? "text-coral" : "text-teal"} />
         </span>
-        <span className={`rounded-md px-2 py-1 text-xs font-semibold ${priorityClass(item.priority)}`}>{item.priority}</span>
+        <div className="flex flex-wrap justify-end gap-2">
+          <span className="rounded-md bg-panel px-2 py-1 text-xs font-semibold text-ink/55">{dueBucketLabel(item.dueBucket)}</span>
+          <span className={`rounded-md px-2 py-1 text-xs font-semibold ${priorityClass(item.priority)}`}>{item.priority}</span>
+        </div>
       </div>
       <p className="mt-4 text-xs font-semibold uppercase tracking-[0.14em] text-ink/45">{item.source}</p>
       <h3 className="mt-2 font-semibold leading-5">{item.title}</h3>
@@ -460,6 +513,19 @@ function Metric({ label, tone, value }: { label: string; tone: "coral" | "gold" 
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink/45">{label}</p>
       <p className={`mt-2 inline-flex rounded-md px-3 py-1 text-lg font-semibold ${toneClass}`}>{value}</p>
     </div>
+  );
+}
+
+function BucketMetric({ active, label, onClick, value }: { active: boolean; label: string; onClick: () => void; value: number }) {
+  return (
+    <button
+      className={`rounded-md border p-3 text-left transition ${active ? "border-teal bg-teal text-white" : "border-line bg-panel text-ink hover:bg-white"}`}
+      onClick={onClick}
+      type="button"
+    >
+      <p className={`text-xs font-semibold uppercase tracking-[0.14em] ${active ? "text-white/75" : "text-ink/45"}`}>{label}</p>
+      <p className="mt-2 text-lg font-semibold">{value}</p>
+    </button>
   );
 }
 
@@ -501,4 +567,53 @@ function iconFor(kind: Focus) {
 
 function formatLabel(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function dueBucketLabel(value: DueBucket) {
+  if (value === "today") return "Today";
+  if (value === "tomorrow") return "Tomorrow";
+  if (value === "this_week") return "This week";
+  if (value === "later") return "Later";
+  return "All";
+}
+
+function bucketSummary(items: ActionItem[]) {
+  return items.reduce<Record<Exclude<DueBucket, "all">, number>>(
+    (summary, item) => {
+      summary[item.dueBucket] += 1;
+      return summary;
+    },
+    { today: 0, tomorrow: 0, this_week: 0, later: 0 }
+  );
+}
+
+function dueBucketFromIso(value?: string | null): Exclude<DueBucket, "all"> | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return dueBucketFromDate(date);
+}
+
+function dueBucketFromText(value?: string | null): Exclude<DueBucket, "all"> | null {
+  if (!value) return null;
+  const lower = value.toLowerCase();
+  if (lower.includes("today")) return "today";
+  if (lower.includes("tomorrow")) return "tomorrow";
+  const date = new Date(value);
+  if (!Number.isNaN(date.getTime())) return dueBucketFromDate(date);
+  return null;
+}
+
+function dueBucketFromDate(date: Date): Exclude<DueBucket, "all"> {
+  const startToday = startOfDay(new Date());
+  const startTarget = startOfDay(date);
+  const days = Math.round((startTarget.getTime() - startToday.getTime()) / 86400000);
+  if (days <= 0) return "today";
+  if (days === 1) return "tomorrow";
+  if (days <= 7) return "this_week";
+  return "later";
+}
+
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }

@@ -31,7 +31,7 @@ const suggestions = [
 ];
 
 const destinations: Record<string, { href: string; label: string }> = {
-  email_request: { href: "/connectors", label: "Open Gmail connector" },
+  email_request: { href: "/connectors", label: "Review Gmail signals" },
   career_request: { href: "/growth", label: "Open Growth" },
   emergency_alert: { href: "/map", label: "Open Guardian Map" },
   capture_request: { href: "/capture", label: "Open Capture" },
@@ -243,6 +243,7 @@ function actionLinksForTrace(trace: DemoTrace, fallback?: { href: string; label:
     links.push({ href: "/tasks#approval-inbox", label: trace.approval ? "Open saved approval" : "Review approval" });
   }
   if (actionTypes.has("draft_email")) links.push({ href: "/tasks#approval-inbox", label: "Review email draft" });
+  if (actionTypes.has("show_gmail_signals") || actionTypes.has("open_connectors")) links.push({ href: "/connectors", label: "Review Gmail signals" });
   if (actionTypes.has("draft_calendar_event")) links.push({ href: "/tasks#approval-inbox", label: "Review calendar draft" });
   if (actionTypes.has("create_prep_tasks") || actionTypes.has("create_travel_tasks") || actionTypes.has("review_conflicts")) links.push({ href: "/tasks", label: "Open related tasks" });
   if (actionTypes.has("open_capture") || trace.intent === "capture_request") links.push({ href: "/capture", label: "Open Capture" });
@@ -270,6 +271,7 @@ function describeCreatedThings(trace: DemoTrace) {
   const parts: string[] = [];
   if (trace.approval || actionTypes.has("request_approval")) parts.push("approval-ready action");
   if (actionTypes.has("draft_email")) parts.push("email draft");
+  if (actionTypes.has("show_gmail_signals")) parts.push("Gmail signal review");
   if (actionTypes.has("draft_calendar_event")) parts.push("calendar event draft");
   if (actionTypes.has("create_prep_tasks")) parts.push("meeting prep tasks");
   if (actionTypes.has("create_travel_tasks")) parts.push("travel checks");
@@ -285,6 +287,7 @@ function describeCreatedThings(trace: DemoTrace) {
 function nextStepForTrace(trace: DemoTrace) {
   if (trace.approval) return "Open the Approval Inbox and approve, edit, or reject it.";
   if (trace.guardian.approval_required) return "Review the guarded action before anything external changes.";
+  if (trace.actions.some((action) => action.type === "show_gmail_signals")) return "Refresh Gmail or ask about a specific sender/subject before drafting a reply.";
   if (trace.intent === "capture_request") return "Open Capture and paste notes, a transcript, or a YouTube link.";
   if (trace.intent === "health_request") return "Open Health and add today’s check-in or sync data.";
   if (trace.intent === "career_request") return "Open Growth to track a course, job, or profile improvement.";

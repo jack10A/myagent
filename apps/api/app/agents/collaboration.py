@@ -181,10 +181,19 @@ def planning_agent(
         confidence = 0.84
         primary_action_type = "nearby_emergency_alert"
     elif situation["type"] == "email_assistance" or situation["type"] == "work_follow_up":
-        title = "MyAgent prepared an email next step"
-        rationale = "Email and memory context were checked before preparing a draft. Nothing will be sent without approval."
-        confidence = 0.82
-        primary_action_type = "send_email"
+        important_messages = (state.user_context.get("gmail") or {}).get("important_messages") or []
+        ranked_messages = rank_email_messages(important_messages, state.event.payload.get("message", ""))
+        actionable_messages = [item for item in ranked_messages if item["message"].get("from")]
+        if actionable_messages:
+            title = "MyAgent prepared an email next step"
+            rationale = "Email and memory context were checked before preparing a draft. Nothing will be sent without approval."
+            confidence = 0.82
+            primary_action_type = "send_email"
+        else:
+            title = "MyAgent needs a real email target first"
+            rationale = "Gmail is connected, but MyAgent did not find an actionable important email with a real recipient in the latest scan."
+            confidence = 0.72
+            primary_action_type = "email_review_needed"
     elif situation["type"] == "capture_assistance":
         title = "MyAgent is ready to analyze the content"
         rationale = "The Capture Agent can extract the relevant section, summary, decisions, and action items."
@@ -284,7 +293,9 @@ def action_agent(state: CollaborationState, situation: dict, planning: AgentMess
         important_messages = (state.user_context.get("gmail") or {}).get("important_messages") or []
         request = state.event.payload.get("message", "")
         ranked_messages = rank_email_messages(important_messages, request)
-        target_message = ranked_messages[0]["message"] if ranked_messages else {}
+        actionable_messages = [item for item in ranked_messages if item["message"].get("from")]
+        target = actionable_messages[0] if actionable_messages else {}
+        target_message = target.get("message") or {}
         request = state.event.payload.get("message", "")
         snippet = target_message.get("snippet") or ""
         recipient_name, recipient_email = parseaddr(target_message.get("from") or "")
@@ -300,7 +311,7 @@ def action_agent(state: CollaborationState, situation: dict, planning: AgentMess
                     "subject": target_message.get("subject") or state.event.payload.get("subject", "Follow-up"),
                     "snippet": target_message.get("snippet"),
                     "body": build_draft_body(request=request, snippet=snippet),
-                    "selected_reason": ranked_messages[0]["reason"] if ranked_messages else "No Gmail signal matched, so MyAgent prepared a generic draft.",
+                    "selected_reason": target.get("reason") or "Matched the strongest actionable Gmail signal.",
                     "alternatives": [
                         {
                             "subject": item["message"].get("subject"),
@@ -308,11 +319,26 @@ def action_agent(state: CollaborationState, situation: dict, planning: AgentMess
                             "score": item["score"],
                             "reason": item["reason"],
                         }
-                        for item in ranked_messages[1:4]
+                        for item in actionable_messages[1:4]
                     ],
                 },
             },
             {"type": "request_approval", "payload": {"reason": "Sending email communicates on your behalf"}},
+        ]
+    elif action_type == "email_review_needed":
+        gmail = state.user_context.get("gmail") or {}
+        actions = [
+            {
+                "type": "show_gmail_signals",
+                "payload": {
+                    "connected": bool(gmail.get("email")),
+                    "email": gmail.get("email"),
+                    "recent_scanned": gmail.get("recent_scanned", 0),
+                    "important_count": len(gmail.get("important_messages") or []),
+                    "message": "Refresh Gmail or ask about a specific sender/subject before MyAgent prepares a draft.",
+                },
+            },
+            {"type": "open_connectors", "payload": {"target": "gmail"}},
         ]
     else:
         actions = [

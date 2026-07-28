@@ -142,6 +142,7 @@ function ApprovalCard({
   const [calendarDraft, setCalendarDraft] = useState(() => calendarDraftFields(draftCalendar?.payload ?? {}));
   const [savingDraft, setSavingDraft] = useState(false);
   const [showTrace, setShowTrace] = useState(false);
+  const incompleteEmailDraft = Boolean(draftEmail && !hasUsableEmailDraft({ ...draftEmail.payload, ...draft }));
 
   async function saveDraft() {
     setSavingDraft(true);
@@ -276,12 +277,17 @@ function ApprovalCard({
         <div className="flex flex-wrap gap-2 lg:justify-end">
           <button
             className="inline-flex items-center gap-2 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-45"
-            disabled={saving || savingDraft || item.status === "approved"}
+            disabled={saving || savingDraft || item.status === "approved" || incompleteEmailDraft}
             onClick={() => void onStatus(item.id, "approved")}
             type="button"
           >
             <Check size={16} /> Approve
           </button>
+          {incompleteEmailDraft ? (
+            <p className="basis-full rounded-md border border-coral/40 bg-coral/10 p-3 text-xs font-semibold text-coral">
+              Approval disabled: this email draft needs a real recipient and body first.
+            </p>
+          ) : null}
           <button
             className="inline-flex items-center gap-2 rounded-md border border-line px-4 py-2 text-sm font-semibold disabled:opacity-45"
             disabled={saving || savingDraft}
@@ -670,6 +676,11 @@ function affectedTarget(item: ApprovalItem) {
     return String(calendar.payload.title || calendar.payload.summary || "Google Calendar");
   }
   return item.situation.title || item.intent || "MyAgent memory";
+}
+
+function hasUsableEmailDraft(payload: Record<string, unknown>) {
+  const fields = draftFields(payload);
+  return Boolean(fields.to && fields.to !== "No recipient found" && fields.body.trim().length > 10);
 }
 
 function approvalOutcome(item: ApprovalItem) {

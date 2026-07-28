@@ -4,16 +4,17 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from app.core.demo_memory import read_memory_value, write_memory_value
+
 ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = ROOT / "data"
 APPROVALS_FILE = DATA_DIR / "demo_approvals.json"
+APPROVALS_MEMORY_KEY = "demo_approvals"
 
 ACTIVE_STATUSES = {"pending", "editing"}
 
 
 def read_approvals() -> list[dict[str, Any]]:
-    if not APPROVALS_FILE.exists():
-        return []
     return list(reversed(_read_raw()))
 
 
@@ -103,12 +104,19 @@ def pending_count() -> int:
 
 
 def _read_raw() -> list[dict[str, Any]]:
+    db_value = read_memory_value(APPROVALS_MEMORY_KEY)
+    if isinstance(db_value, dict) and isinstance(db_value.get("items"), list):
+        return db_value["items"]
+
     if not APPROVALS_FILE.exists():
         return []
     raw = APPROVALS_FILE.read_text(encoding="utf-8")
-    return json.loads(raw) if raw else []
+    approvals = json.loads(raw) if raw else []
+    write_memory_value(APPROVALS_MEMORY_KEY, {"items": approvals})
+    return approvals
 
 
 def _write_raw(approvals: list[dict[str, Any]]) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     APPROVALS_FILE.write_text(json.dumps(approvals, indent=2), encoding="utf-8")
+    write_memory_value(APPROVALS_MEMORY_KEY, {"items": approvals})

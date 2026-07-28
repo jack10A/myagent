@@ -4,9 +4,14 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.core.demo_memory import delete_memory_value, read_memory_value, write_memory_value
+
 ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = ROOT / "data"
 PROFILE_FILE = DATA_DIR / "demo_profile.json"
+PROFILE_MEMORY_KEY = "default_profile"
+APPROVALS_FILE = DATA_DIR / "demo_approvals.json"
+ACTIVITY_FILE = DATA_DIR / "demo_activity.json"
 
 
 class DemoProfile(BaseModel):
@@ -30,9 +35,15 @@ class DemoProfile(BaseModel):
 
 
 def read_profile() -> dict[str, Any]:
+    db_profile = read_memory_value(PROFILE_MEMORY_KEY)
+    if isinstance(db_profile, dict):
+        return DemoProfile.model_validate(db_profile).model_dump()
+
     if not PROFILE_FILE.exists():
         return DemoProfile().model_dump()
-    return DemoProfile.model_validate_json(PROFILE_FILE.read_text(encoding="utf-8")).model_dump()
+    profile = DemoProfile.model_validate_json(PROFILE_FILE.read_text(encoding="utf-8")).model_dump()
+    write_memory_value(PROFILE_MEMORY_KEY, profile)
+    return profile
 
 
 def write_profile(profile: dict[str, Any]) -> dict[str, Any]:
@@ -42,7 +53,9 @@ def write_profile(profile: dict[str, Any]) -> dict[str, Any]:
     current["updated_at"] = datetime.now(UTC).isoformat()
     model = DemoProfile.model_validate(current)
     PROFILE_FILE.write_text(model.model_dump_json(indent=2), encoding="utf-8")
-    return model.model_dump()
+    saved = model.model_dump()
+    write_memory_value(PROFILE_MEMORY_KEY, saved)
+    return saved
 
 
 def export_profile_bundle() -> dict[str, Any]:
@@ -57,7 +70,13 @@ def clear_profile_memory() -> dict[str, Any]:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     model = DemoProfile()
     PROFILE_FILE.write_text(model.model_dump_json(indent=2), encoding="utf-8")
-    return model.model_dump()
+    APPROVALS_FILE.write_text("[]", encoding="utf-8")
+    ACTIVITY_FILE.write_text("[]", encoding="utf-8")
+    delete_memory_value("demo_approvals")
+    delete_memory_value("demo_activity")
+    saved = model.model_dump()
+    write_memory_value(PROFILE_MEMORY_KEY, saved)
+    return saved
 
 
 def disable_profile_connector(connector: str) -> dict[str, Any] | None:
@@ -71,7 +90,9 @@ def disable_profile_connector(connector: str) -> dict[str, Any] | None:
     model = DemoProfile.model_validate(profile)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     PROFILE_FILE.write_text(model.model_dump_json(indent=2), encoding="utf-8")
-    return model.model_dump()
+    saved = model.model_dump()
+    write_memory_value(PROFILE_MEMORY_KEY, saved)
+    return saved
 
 
 def redact_sensitive(value: Any) -> Any:

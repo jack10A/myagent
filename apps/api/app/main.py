@@ -31,11 +31,11 @@ def create_local_tables() -> None:
         print("MyAgent: skipping database startup check.")
         return
 
-    if settings.app_env == "local":
-        try:
-            Base.metadata.create_all(bind=engine)
-        except SQLAlchemyError as exc:
-            print(f"MyAgent warning: database is unavailable, starting API without local tables. {exc}")
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("MyAgent: database tables ready.")
+    except SQLAlchemyError as exc:
+        print(f"MyAgent warning: database is unavailable, starting API with JSON fallback. {exc}")
 
 app.add_middleware(
     CORSMiddleware,

@@ -4,9 +4,12 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from app.core.demo_memory import read_memory_value, write_memory_value
+
 ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = ROOT / "data"
 ACTIVITY_FILE = DATA_DIR / "demo_activity.json"
+ACTIVITY_MEMORY_KEY = "demo_activity"
 
 
 def read_activity(limit: int = 30) -> list[dict[str, Any]]:
@@ -53,12 +56,19 @@ def update_activity_approval(approval_id: str, status: str, execution: dict[str,
 
 
 def _read_raw() -> list[dict[str, Any]]:
+    db_value = read_memory_value(ACTIVITY_MEMORY_KEY)
+    if isinstance(db_value, dict) and isinstance(db_value.get("items"), list):
+        return db_value["items"]
+
     if not ACTIVITY_FILE.exists():
         return []
     raw = ACTIVITY_FILE.read_text(encoding="utf-8")
-    return json.loads(raw) if raw else []
+    items = json.loads(raw) if raw else []
+    write_memory_value(ACTIVITY_MEMORY_KEY, {"items": items})
+    return items
 
 
 def _write_raw(items: list[dict[str, Any]]) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     ACTIVITY_FILE.write_text(json.dumps(items, indent=2), encoding="utf-8")
+    write_memory_value(ACTIVITY_MEMORY_KEY, {"items": items})

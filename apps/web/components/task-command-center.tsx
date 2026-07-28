@@ -1,0 +1,399 @@
+"use client";
+
+import Link from "next/link";
+import {
+  AlertTriangle,
+  BellRing,
+  BookOpen,
+  BriefcaseBusiness,
+  CalendarDays,
+  CheckCircle2,
+  ChevronRight,
+  HeartPulse,
+  RefreshCw,
+  ShieldCheck,
+  Video
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { getApprovals, type ApprovalItem } from "@/lib/approvals";
+import { getCalendarAgenda, type CalendarAgenda, type TravelRisk } from "@/lib/calendar";
+import { getCaptureTasks, type CaptureTask } from "@/lib/capture";
+import { getHealthSummary, type HealthSummary } from "@/lib/health";
+import { getJobs, type JobTask } from "@/lib/jobs";
+import { getLearning, type LearningTask } from "@/lib/learning";
+
+type Focus = "all" | "approval" | "calendar" | "travel" | "career" | "learning" | "health" | "capture";
+type Priority = "urgent" | "high" | "medium" | "low";
+
+type ActionItem = {
+  id: string;
+  kind: Focus;
+  title: string;
+  body: string;
+  priority: Priority;
+  source: string;
+  href: string;
+  action: string;
+  meta?: string;
+};
+
+const priorityRank: Record<Priority, number> = { urgent: 4, high: 3, medium: 2, low: 1 };
+
+export function TaskCommandCenter() {
+  const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
+  const [agenda, setAgenda] = useState<CalendarAgenda | null>(null);
+  const [jobs, setJobs] = useState<JobTask[]>([]);
+  const [learning, setLearning] = useState<LearningTask[]>([]);
+  const [captures, setCaptures] = useState<CaptureTask[]>([]);
+  const [health, setHealth] = useState<HealthSummary | null>(null);
+  const [focus, setFocus] = useState<Focus>("all");
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState("Loading your action plan...");
+
+  async function load() {
+    setLoading(true);
+    const [approvalResult, calendarResult, jobResult, learningResult, captureResult, healthResult] = await Promise.allSettled([
+      getApprovals(),
+      getCalendarAgenda(),
+      getJobs(),
+      getLearning(),
+      getCaptureTasks(),
+      getHealthSummary()
+    ]);
+
+    if (approvalResult.status === "fulfilled") setApprovals(approvalResult.value.approvals);
+    if (calendarResult.status === "fulfilled") setAgenda(calendarResult.value.agenda);
+    if (jobResult.status === "fulfilled") setJobs(jobResult.value.tasks);
+    if (learningResult.status === "fulfilled") setLearning(learningResult.value.tasks);
+    if (captureResult.status === "fulfilled") setCaptures(captureResult.value.tasks);
+    if (healthResult.status === "fulfilled") setHealth(healthResult.value);
+
+    const failed = [approvalResult, calendarResult, jobResult, learningResult, captureResult, healthResult].filter((result) => result.status === "rejected").length;
+    setStatus(failed ? `${6 - failed}/6 task sources loaded. Some agents need the backend or connector data.` : "All task sources loaded.");
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const items = useMemo(() => {
+    return buildActions({ approvals, agenda, jobs, learning, captures, health });
+  }, [approvals, agenda, jobs, learning, captures, health]);
+
+  const filtered = focus === "all" ? items : items.filter((item) => item.kind === focus);
+  const top = filtered[0] ?? items[0];
+  const urgentCount = items.filter((item) => item.priority === "urgent" || item.priority === "high").length;
+  const pendingApprovals = approvals.filter((item) => item.status === "pending" || item.status === "editing").length;
+  const activeWork = jobs.length + learning.length + captures.length + (agenda?.prep_tasks.length ?? 0);
+
+  return (
+    <section className="space-y-4">
+      <div className="overflow-hidden rounded-md border border-ink/10 bg-white shadow-soft">
+        <div className="grid gap-0 xl:grid-cols-[1.1fr_0.9fr]">
+          <div className="p-5 sm:p-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <BellRing size={19} className="text-coral" />
+                  <h2 className="text-lg font-semibold">Task Command Center</h2>
+                </div>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-ink/65">
+                  A single action plan from Guardian, Calendar, Travel, Growth, Learning, Capture, Health, and Approval agents.
+                </p>
+                <p className="mt-2 text-xs font-semibold text-ink/45">{loading ? "Loading..." : status}</p>
+              </div>
+              <button
+                aria-label="Refresh task command center"
+                className="flex h-10 w-10 items-center justify-center rounded-md border border-line"
+                onClick={() => void load()}
+                title="Refresh task command center"
+                type="button"
+              >
+                <RefreshCw size={17} />
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <Metric label="High priority" value={String(urgentCount)} tone={urgentCount ? "coral" : "sage"} />
+              <Metric label="Approvals" value={String(pendingApprovals)} tone={pendingApprovals ? "gold" : "sage"} />
+              <Metric label="Active work" value={String(activeWork)} tone="teal" />
+            </div>
+
+            <div className="mt-5 rounded-md border border-teal/35 bg-teal/10 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal">Do this first</p>
+              <h3 className="mt-2 text-xl font-semibold">{top?.title ?? "No active tasks yet"}</h3>
+              <p className="mt-2 text-sm leading-6 text-ink/70">
+                {top?.body ?? "Track a job, connect Calendar, save a learning item, or create a Capture summary to fill this workspace."}
+              </p>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                {top ? <span className={`rounded-md px-2 py-1 text-xs font-semibold ${priorityClass(top.priority)}`}>{top.priority}</span> : null}
+                {top ? <span className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-ink/55">{top.source}</span> : null}
+                <Link className="inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-semibold text-white" href={top?.href ?? "/growth"}>
+                  {top?.action ?? "Open Growth"}
+                  <ChevronRight size={14} />
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          <aside className="border-t border-line bg-panel p-5 sm:p-6 xl:border-l xl:border-t-0">
+            <div className="rounded-md bg-white p-4">
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={18} className="text-sage" />
+                <h3 className="font-semibold">Guardian rule</h3>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-ink/65">
+                Tasks can save local progress immediately. Email drafts, calendar events, and outreach still wait for approval.
+              </p>
+            </div>
+
+            <div className="mt-4 rounded-md bg-white p-4">
+              <p className="text-sm font-semibold">Agent load</p>
+              <div className="mt-3 grid gap-2">
+                <AgentLoad label="Calendar" value={(agenda?.prep_tasks.length ?? 0) + (agenda?.travel_guardian.risks.length ?? 0)} />
+                <AgentLoad label="Jobs" value={jobs.length} />
+                <AgentLoad label="Learning" value={learning.length} />
+                <AgentLoad label="Capture" value={captures.length} />
+                <AgentLoad label="Health" value={health?.insights.length ?? 0} />
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {(["all", "approval", "calendar", "travel", "career", "learning", "health", "capture"] as Focus[]).map((item) => (
+          <button
+            className={`rounded-md border px-3 py-2 text-sm font-semibold ${focus === item ? "border-ink bg-ink text-white" : "border-line bg-white text-ink/70"}`}
+            key={item}
+            onClick={() => setFocus(item)}
+            type="button"
+          >
+            {formatLabel(item)}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        {filtered.slice(0, 6).map((item) => <ActionCard item={item} key={item.id} />)}
+        {!filtered.length ? (
+          <div className="rounded-md border border-dashed border-line bg-white p-5 text-sm text-ink/60 shadow-soft lg:col-span-3">
+            No tasks for this filter yet. MyAgent will add them as you track jobs, learning resources, approvals, captures, health, and calendar prep.
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function buildActions({
+  approvals,
+  agenda,
+  captures,
+  health,
+  jobs,
+  learning
+}: {
+  approvals: ApprovalItem[];
+  agenda: CalendarAgenda | null;
+  captures: CaptureTask[];
+  health: HealthSummary | null;
+  jobs: JobTask[];
+  learning: LearningTask[];
+}) {
+  const actions: ActionItem[] = [];
+
+  approvals
+    .filter((item) => item.status === "pending" || item.status === "editing")
+    .forEach((item) => {
+      actions.push({
+        id: `approval-${item.id}`,
+        kind: "approval",
+        title: item.recommendation.title || "Approval waiting",
+        body: item.guardian.reason || item.recommendation.rationale || "Guardian is waiting for your decision.",
+        priority: "high",
+        source: "Guardian",
+        href: "#approval-inbox",
+        action: "Review approval",
+        meta: item.status
+      });
+    });
+
+  (agenda?.conflicts ?? []).forEach((conflict, index) => {
+    actions.push({
+      id: `calendar-conflict-${index}-${conflict.title}`,
+      kind: "calendar",
+      title: conflict.title || "Calendar conflict",
+      body: (conflict.events ?? []).join(" and ") || "Calendar Agent found a possible overlap.",
+      priority: "high",
+      source: "Calendar Agent",
+      href: "#calendar-tasks",
+      action: "Resolve conflict",
+      meta: conflict.severity
+    });
+  });
+
+  (agenda?.travel_guardian.risks ?? []).forEach((risk: TravelRisk) => {
+    actions.push({
+      id: `travel-${risk.id}`,
+      kind: "travel",
+      title: risk.title,
+      body: risk.reason,
+      priority: risk.severity === "urgent" ? "urgent" : risk.severity === "warning" ? "high" : "medium",
+      source: "Travel Guardian",
+      href: "#calendar-tasks",
+      action: "Open travel prep",
+      meta: risk.when
+    });
+  });
+
+  (agenda?.prep_tasks ?? []).slice(0, 3).forEach((task) => {
+    actions.push({
+      id: `calendar-task-${task.id}`,
+      kind: "calendar",
+      title: task.title,
+      body: task.steps[0] || "Prepare for this event.",
+      priority: task.priority === "high" ? "high" : "medium",
+      source: "Meeting Agent",
+      href: "#calendar-tasks",
+      action: "Open prep"
+    });
+  });
+
+  jobs.slice(0, 4).forEach((job) => {
+    actions.push({
+      id: `job-${job.id}`,
+      kind: "career",
+      title: `Move forward: ${job.title}`,
+      body: job.next_step || "Continue application prep.",
+      priority: job.status === "interview" || job.status === "offer" ? "high" : "medium",
+      source: "Job Agent",
+      href: "#job-tasks",
+      action: "Open job task",
+      meta: `${job.match_score}% match`
+    });
+  });
+
+  learning.slice(0, 3).forEach((task) => {
+    actions.push({
+      id: `learning-${task.id}`,
+      kind: "learning",
+      title: task.title,
+      body: task.next_step.task,
+      priority: task.priority >= 90 ? "medium" : "low",
+      source: "Learning Agent",
+      href: "#learning-tasks",
+      action: "Open learning"
+    });
+  });
+
+  captures.slice(0, 3).forEach((task) => {
+    actions.push({
+      id: `capture-${task.id}`,
+      kind: "capture",
+      title: task.title,
+      body: `Follow up from ${task.source_title || task.capture_type}.`,
+      priority: "medium",
+      source: "Capture Agent",
+      href: "#capture-tasks",
+      action: "Open capture"
+    });
+  });
+
+  if (health?.urgent_warning) {
+    actions.push({
+      id: "health-urgent",
+      kind: "health",
+      title: "Health warning",
+      body: health.urgent_warning,
+      priority: "urgent",
+      source: "Health Agent",
+      href: "/health",
+      action: "Open health"
+    });
+  }
+
+  (health?.insights ?? []).slice(0, 3).forEach((insight, index) => {
+    actions.push({
+      id: `health-${index}-${insight.title}`,
+      kind: "health",
+      title: insight.title,
+      body: insight.body,
+      priority: insight.severity === "warning" ? "medium" : "low",
+      source: "Health Agent",
+      href: "/health",
+      action: "Open health"
+    });
+  });
+
+  return actions.sort((a, b) => priorityRank[b.priority] - priorityRank[a.priority]);
+}
+
+function ActionCard({ item }: { item: ActionItem }) {
+  const Icon = iconFor(item.kind);
+  return (
+    <article className="rounded-md border border-line bg-white p-5 shadow-soft">
+      <div className="flex items-start justify-between gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-md bg-panel">
+          <Icon size={18} className={item.priority === "urgent" || item.priority === "high" ? "text-coral" : "text-teal"} />
+        </span>
+        <span className={`rounded-md px-2 py-1 text-xs font-semibold ${priorityClass(item.priority)}`}>{item.priority}</span>
+      </div>
+      <p className="mt-4 text-xs font-semibold uppercase tracking-[0.14em] text-ink/45">{item.source}</p>
+      <h3 className="mt-2 font-semibold leading-5">{item.title}</h3>
+      <p className="mt-2 line-clamp-3 text-sm leading-6 text-ink/65">{item.body}</p>
+      {item.meta ? <p className="mt-3 rounded-md bg-panel px-3 py-2 text-xs font-semibold text-ink/55">{item.meta}</p> : null}
+      <Link className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-ink" href={item.href}>
+        {item.action}
+        <ChevronRight size={14} />
+      </Link>
+    </article>
+  );
+}
+
+function Metric({ label, tone, value }: { label: string; tone: "coral" | "gold" | "teal" | "sage"; value: string }) {
+  const toneClass = {
+    coral: "bg-coral/10 text-coral",
+    gold: "bg-gold/10 text-gold",
+    teal: "bg-teal/10 text-teal",
+    sage: "bg-sage/12 text-sage"
+  }[tone];
+  return (
+    <div className="rounded-md bg-panel p-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink/45">{label}</p>
+      <p className={`mt-2 inline-flex rounded-md px-3 py-1 text-lg font-semibold ${toneClass}`}>{value}</p>
+    </div>
+  );
+}
+
+function AgentLoad({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex items-center justify-between rounded-md bg-panel p-3">
+      <p className="text-sm font-semibold">{label}</p>
+      <p className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-ink/60">{value}</p>
+    </div>
+  );
+}
+
+function priorityClass(priority: Priority) {
+  if (priority === "urgent") return "bg-coral/10 text-coral";
+  if (priority === "high") return "bg-gold/10 text-gold";
+  if (priority === "medium") return "bg-teal/10 text-teal";
+  return "bg-panel text-ink/55";
+}
+
+function iconFor(kind: Focus) {
+  if (kind === "approval") return ShieldCheck;
+  if (kind === "calendar") return CalendarDays;
+  if (kind === "travel") return AlertTriangle;
+  if (kind === "career") return BriefcaseBusiness;
+  if (kind === "learning") return BookOpen;
+  if (kind === "health") return HeartPulse;
+  if (kind === "capture") return Video;
+  return CheckCircle2;
+}
+
+function formatLabel(value: string) {
+  return value.replaceAll("_", " ");
+}

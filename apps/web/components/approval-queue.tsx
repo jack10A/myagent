@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Check, Clock3, Mail, Pencil, RefreshCw, ShieldCheck, X } from "lucide-react";
+import { AlertTriangle, BrainCircuit, Check, ChevronDown, ChevronUp, Clock3, Mail, Pencil, RefreshCw, ShieldCheck, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   getApprovals,
@@ -141,6 +141,7 @@ function ApprovalCard({
   const [draft, setDraft] = useState(() => draftFields(draftEmail?.payload ?? {}));
   const [calendarDraft, setCalendarDraft] = useState(() => calendarDraftFields(draftCalendar?.payload ?? {}));
   const [savingDraft, setSavingDraft] = useState(false);
+  const [showTrace, setShowTrace] = useState(false);
 
   async function saveDraft() {
     setSavingDraft(true);
@@ -199,6 +200,9 @@ function ApprovalCard({
             <span className="rounded-md bg-panel px-3 py-1">{editing ? "editing draft" : item.status}</span>
           </div>
 
+          <ImpactPreview item={item} />
+          <ApprovalChecklist item={item} />
+
           {draftEmail ? (
             editing ? (
               <EmailDraftEditor
@@ -250,6 +254,23 @@ function ApprovalCard({
           {item.execution ? (
             <ExecutionResult execution={item.execution} />
           ) : null}
+
+          <ApprovalTimeline item={item} />
+
+          <div className="mt-4 overflow-hidden rounded-md border border-line">
+            <button
+              className="flex w-full items-center justify-between bg-panel px-4 py-3 text-sm font-semibold"
+              onClick={() => setShowTrace((value) => !value)}
+              type="button"
+            >
+              <span className="inline-flex items-center gap-2">
+                <BrainCircuit size={16} className="text-gold" />
+                Agent trace ({item.agent_messages.length})
+              </span>
+              {showTrace ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+            {showTrace ? <AgentTrace messages={item.agent_messages} /> : null}
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2 lg:justify-end">
@@ -283,6 +304,92 @@ function ApprovalCard({
         </div>
       </div>
     </article>
+  );
+}
+
+function ImpactPreview({ item }: { item: ApprovalItem }) {
+  const actionType = item.recommendation.primary_action_type || item.actions[0]?.type || "guarded action";
+  const affected = affectedTarget(item);
+  return (
+    <section className="mt-4 grid gap-3 rounded-md border border-line bg-panel p-4 md:grid-cols-3">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink/45">Action</p>
+        <p className="mt-1 text-sm font-semibold">{formatLabel(actionType)}</p>
+      </div>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink/45">Affected</p>
+        <p className="mt-1 text-sm font-semibold">{affected}</p>
+      </div>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink/45">Result if approved</p>
+        <p className="mt-1 text-sm font-semibold">{approvalOutcome(item)}</p>
+      </div>
+    </section>
+  );
+}
+
+function ApprovalChecklist({ item }: { item: ApprovalItem }) {
+  const checks = [
+    item.guardian.approval_required ? "External action requires your consent." : "Guardian marked this as low-risk.",
+    item.actions.some((action) => action.type === "draft_email") ? "Gmail will create a draft, not send automatically." : null,
+    item.actions.some((action) => action.type === "draft_calendar_event") ? "Google Calendar will be changed only after approval." : null,
+    item.actions.some((action) => action.type === "draft_email" || action.type === "draft_calendar_event") ? "You can edit the draft before approving." : null,
+    item.agent_messages.length ? "Agent reasoning trace is available before approval." : null,
+  ].filter(Boolean) as string[];
+
+  return (
+    <section className="mt-4 rounded-md border border-line p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink/45">Before approving</p>
+      <div className="mt-3 grid gap-2">
+        {checks.map((check) => (
+          <div className="flex gap-3 rounded-md bg-panel p-3 text-sm text-ink/70" key={check}>
+            <ShieldCheck size={15} className="mt-0.5 shrink-0 text-sage" />
+            <span>{check}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ApprovalTimeline({ item }: { item: ApprovalItem }) {
+  const steps = [
+    { label: "Created", detail: formatDate(item.created_at), active: true },
+    { label: "Guardian reviewed", detail: item.guardian.reason || "Risk and approval need checked.", active: true },
+    { label: "Edited", detail: "Draft changes saved.", active: item.status === "editing" || item.updated_at !== item.created_at },
+    { label: item.status === "approved" ? "Approved" : item.status === "rejected" ? "Rejected" : "Waiting", detail: formatDate(item.updated_at), active: item.status === "approved" || item.status === "rejected" },
+    { label: "Result", detail: item.execution ? executionMessage(item.execution) : "No external change yet.", active: Boolean(item.execution) },
+  ];
+
+  return (
+    <section className="mt-4 rounded-md border border-line p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink/45">Approval timeline</p>
+      <div className="mt-3 grid gap-2 md:grid-cols-5">
+        {steps.map((step) => (
+          <div className={`rounded-md p-3 text-xs ${step.active ? "bg-sage/10 text-ink" : "bg-panel text-ink/45"}`} key={step.label}>
+            <p className="font-semibold">{step.label}</p>
+            <p className="mt-1 leading-5">{step.detail}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AgentTrace({ messages }: { messages: ApprovalItem["agent_messages"] }) {
+  if (!messages.length) {
+    return <p className="bg-white p-4 text-sm text-ink/60">No agent trace saved for this approval.</p>;
+  }
+  return (
+    <div className="grid gap-px bg-line md:grid-cols-2 xl:grid-cols-3">
+      {messages.map((message, index) => (
+        <div className="bg-white p-4" key={`${message.agent}-${index}`}>
+          <p className="text-xs font-semibold text-teal">{index + 1}. {formatAgent(message.agent)}</p>
+          <p className="mt-2 text-xs leading-5 text-ink/60">{message.summary}</p>
+          {message.depends_on.length ? <p className="mt-2 text-[11px] font-semibold text-ink/40">Depends on: {message.depends_on.map(formatAgent).join(", ")}</p> : null}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -539,6 +646,37 @@ function iconFor(actionType?: string, situationType?: string) {
 
 function formatLabel(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function formatAgent(value: string) {
+  return value.split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
+function formatDate(value?: string) {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
+function affectedTarget(item: ApprovalItem) {
+  const email = item.actions.find((action) => action.type === "draft_email");
+  if (email) {
+    const fields = draftFields(email.payload);
+    return fields.to || "Email recipient";
+  }
+  const calendar = item.actions.find((action) => action.type === "draft_calendar_event");
+  if (calendar) {
+    return String(calendar.payload.title || calendar.payload.summary || "Google Calendar");
+  }
+  return item.situation.title || item.intent || "MyAgent memory";
+}
+
+function approvalOutcome(item: ApprovalItem) {
+  if (item.actions.some((action) => action.type === "draft_email")) return "Gmail draft will be created";
+  if (item.actions.some((action) => action.type === "draft_calendar_event")) return "Calendar event will be created";
+  if (item.actions.some((action) => action.type === "draft_calendar_update")) return "Calendar update will be prepared";
+  return "MyAgent will apply the guarded action";
 }
 
 function payloadPreview(payload: Record<string, unknown>) {

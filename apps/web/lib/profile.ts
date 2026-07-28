@@ -79,6 +79,20 @@ export type MyAgentProfile = {
     action_items?: string[];
   }>;
   health?: {
+    latest_fitness?: {
+      steps?: number | null;
+      active_calories?: number | null;
+      distance_km?: number | null;
+      exercise_minutes?: number | null;
+      stand_hours?: number | null;
+      sleep_hours?: number | null;
+      resting_heart_rate?: number | null;
+      source?: string;
+      synced_for?: string | null;
+      notes?: string | null;
+      created_at?: string;
+    } | null;
+    fitness_syncs?: Array<Record<string, unknown>>;
     latest?: {
       mood?: number;
       energy?: number;
@@ -124,4 +138,28 @@ export async function getProfileGrowthPlan() {
   }
 
   return response.json();
+}
+
+export async function exportProfileMemory(): Promise<Record<string, unknown>> {
+  const response = await fetch(`${API_URL}/profile/export`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error("Could not export memory");
+  }
+  return response.json() as Promise<Record<string, unknown>>;
+}
+
+export async function deleteProfileMemory(): Promise<{ deleted: boolean; profile: MyAgentProfile }> {
+  const response = await fetch(`${API_URL}/profile/memory?confirm=DELETE`, { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error("Could not delete memory");
+  }
+  return response.json() as Promise<{ deleted: boolean; profile: MyAgentProfile }>;
+}
+
+export async function disableConnector(connector: string): Promise<{ disabled: string; profile: MyAgentProfile }> {
+  const response = await fetch(`${API_URL}/profile/connectors/${connector}/disable`, { method: "PATCH" });
+  if (!response.ok) {
+    throw new Error("Could not disable connector");
+  }
+  return response.json() as Promise<{ disabled: string; profile: MyAgentProfile }>;
 }

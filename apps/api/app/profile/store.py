@@ -45,6 +45,50 @@ def write_profile(profile: dict[str, Any]) -> dict[str, Any]:
     return model.model_dump()
 
 
+def export_profile_bundle() -> dict[str, Any]:
+    return {
+        "exported_at": datetime.now(UTC).isoformat(),
+        "profile": redact_sensitive(read_profile()),
+        "note": "OAuth tokens and private auth values are redacted from this export.",
+    }
+
+
+def clear_profile_memory() -> dict[str, Any]:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    model = DemoProfile()
+    PROFILE_FILE.write_text(model.model_dump_json(indent=2), encoding="utf-8")
+    return model.model_dump()
+
+
+def disable_profile_connector(connector: str) -> dict[str, Any] | None:
+    allowed = {"gmail", "calendar", "github", "linkedin", "cv", "health"}
+    if connector not in allowed:
+        return None
+    profile = read_profile()
+    value: Any = {} if connector == "health" else None
+    profile[connector] = value
+    profile["updated_at"] = datetime.now(UTC).isoformat()
+    model = DemoProfile.model_validate(profile)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    PROFILE_FILE.write_text(model.model_dump_json(indent=2), encoding="utf-8")
+    return model.model_dump()
+
+
+def redact_sensitive(value: Any) -> Any:
+    sensitive_keys = {"access_token", "refresh_token", "id_token", "client_secret", "token", "oauth"}
+    if isinstance(value, dict):
+        redacted = {}
+        for key, item in value.items():
+            if str(key).lower() in sensitive_keys:
+                redacted[key] = "[redacted]"
+            else:
+                redacted[key] = redact_sensitive(item)
+        return redacted
+    if isinstance(value, list):
+        return [redact_sensitive(item) for item in value]
+    return value
+
+
 def profile_to_context(profile: dict[str, Any]) -> dict:
     linkedin = profile.get("linkedin") or {}
     linkedin_details = linkedin if isinstance(linkedin, dict) else {}

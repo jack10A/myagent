@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/app-shell";
 import { CvAnalyzer } from "@/components/cv-analyzer";
 import { GrowthOverview } from "@/components/growth-overview";
+import { JobSearchAgent } from "@/components/job-search-agent";
 import { PageHeader } from "@/components/page-header";
 
 export default function GrowthPage() {
@@ -13,6 +14,8 @@ export default function GrowthPage() {
       />
 
       <CvAnalyzer />
+
+      <JobSearchAgent />
 
       <GrowthOverview />
     </AppShell>

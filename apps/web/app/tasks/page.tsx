@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/app-shell";
+import { ApplicationTrackerBoard } from "@/components/application-tracker-board";
 import { ApprovalQueue } from "@/components/approval-queue";
 import { CalendarTaskList } from "@/components/calendar-task-list";
 import { CaptureTaskList } from "@/components/capture-task-list";
@@ -15,6 +16,7 @@ export default function TasksPage() {
         description="MyAgent turns recommendations into tracked work, while Guardian keeps risky actions approval-first."
       />
       <div className="space-y-6">
+        <ApplicationTrackerBoard />
         <CalendarTaskList />
         <CaptureTaskList />
         <LearningTaskList />

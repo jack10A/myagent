@@ -108,14 +108,21 @@ def build_memory_timeline(query: str | None = None, limit: int = 80) -> dict[str
 
     linkedin = profile.get("linkedin") or {}
     if linkedin:
+        details = []
+        if linkedin.get("headline"):
+            details.append(f"Headline: {linkedin.get('headline')}")
+        if linkedin.get("current_role") or linkedin.get("target_role"):
+            details.append(f"Role path: {linkedin.get('current_role') or 'current role unknown'} -> {linkedin.get('target_role') or 'target role unknown'}")
+        if linkedin.get("skills"):
+            details.append(f"Skills: {', '.join(linkedin.get('skills')[:8])}")
         add(
             "LinkedIn",
             linkedin.get("name") or "LinkedIn identity",
-            f"Basic LinkedIn identity connected for Growth context. Email: {linkedin.get('email') or 'not returned'}.",
+            " ".join(details) or f"Basic LinkedIn identity connected for Growth context. Email: {linkedin.get('email') or 'not returned'}.",
             source="linkedin",
             importance=4,
             created_at=linkedin.get("connected_at") or profile.get("updated_at"),
-            metadata={"sub": linkedin.get("sub"), "picture": linkedin.get("picture")},
+            metadata={"sub": linkedin.get("sub"), "picture": linkedin.get("picture"), "url": linkedin.get("profile_url")},
             tags=["linkedin", "career", "identity"],
         )
 

@@ -27,7 +27,15 @@ def build_growth_plan(context: dict) -> dict:
     strongest_language = github_languages[0] if github_languages else None
     important_emails = gmail.get("important_messages") or []
     career_emails = career_related_emails(important_emails)
-    readiness = readiness_score(repos_scanned=repos_scanned, skills=skills, career_emails=career_emails, has_cv=bool(context.get("cv")), has_linkedin=bool(linkedin.get("sub")))
+    linkedin_complete = linkedin_profile_completeness(linkedin)
+    readiness = readiness_score(
+        repos_scanned=repos_scanned,
+        skills=skills,
+        career_emails=career_emails,
+        has_cv=bool(context.get("cv")),
+        has_linkedin=bool(linkedin.get("sub")),
+        linkedin_complete=linkedin_complete,
+    )
     source_status = {
         "github": "connected" if github.get("login") else "missing",
         "linkedin": "connected" if linkedin.get("sub") else "missing",
@@ -56,6 +64,13 @@ def build_growth_plan(context: dict) -> dict:
                 "email": linkedin.get("email"),
                 "picture": linkedin.get("picture"),
                 "connected": bool(linkedin.get("sub")),
+                "profile_url": linkedin.get("profile_url"),
+                "headline": linkedin.get("headline"),
+                "current_role": linkedin.get("current_role"),
+                "target_role": linkedin.get("target_role"),
+                "skills": linkedin.get("skills") or [],
+                "about": linkedin.get("about"),
+                "completeness": linkedin_complete,
             },
             "gmail": {
                 "email": gmail.get("email"),
@@ -156,13 +171,14 @@ def career_related_emails(messages: list[dict]) -> list[dict]:
     return career
 
 
-def readiness_score(repos_scanned: int, skills: list[str], career_emails: list[dict], has_cv: bool, has_linkedin: bool = False) -> int:
+def readiness_score(repos_scanned: int, skills: list[str], career_emails: list[dict], has_cv: bool, has_linkedin: bool = False, linkedin_complete: int = 0) -> int:
     score = 25
     score += min(repos_scanned, 20)
     score += min(len(skills) * 5, 25)
     score += 15 if career_emails else 0
     score += 15 if has_cv else 0
     score += 5 if has_linkedin else 0
+    score += min(linkedin_complete, 6)
     return min(score, 100)
 
 
@@ -209,8 +225,36 @@ def build_source_insights(source_status: dict, repos_scanned: int, skills: list[
 def linkedin_source_insight(status: str, linkedin: dict) -> str:
     if status == "connected":
         name = linkedin.get("name") or "your LinkedIn identity"
-        return f"{name} is connected through LinkedIn Sign In. Add headline/profile URL later for stronger career positioning."
+        completeness = linkedin_profile_completeness(linkedin)
+        if completeness >= 5:
+            return f"{name}'s LinkedIn details are ready for Growth and Job Search matching."
+        missing = linkedin_missing_fields(linkedin)
+        return f"{name} is connected. Add {', '.join(missing[:3])} for stronger career positioning."
     return "Connect LinkedIn to add a real professional identity signal to Growth."
+
+
+def linkedin_profile_completeness(linkedin: dict) -> int:
+    fields = [
+        linkedin.get("profile_url"),
+        linkedin.get("headline"),
+        linkedin.get("current_role"),
+        linkedin.get("target_role"),
+        linkedin.get("skills"),
+        linkedin.get("about"),
+    ]
+    return sum(1 for value in fields if value)
+
+
+def linkedin_missing_fields(linkedin: dict) -> list[str]:
+    labels = [
+        ("profile_url", "profile URL"),
+        ("headline", "headline"),
+        ("current_role", "current role"),
+        ("target_role", "target role"),
+        ("skills", "skills"),
+        ("about", "about summary"),
+    ]
+    return [label for key, label in labels if not linkedin.get(key)]
 
 
 def cv_source_insight(status: str, skills: list[str]) -> str:

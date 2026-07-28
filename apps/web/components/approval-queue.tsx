@@ -33,6 +33,8 @@ export function ApprovalQueue() {
 
   useEffect(() => {
     void loadApprovals();
+    window.addEventListener("myagent:approval-created", loadApprovals);
+    return () => window.removeEventListener("myagent:approval-created", loadApprovals);
   }, []);
 
   async function changeStatus(id: string, status: ApprovalStatus) {
@@ -61,7 +63,7 @@ export function ApprovalQueue() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 scroll-mt-20" id="approval-inbox">
       <div className="grid gap-4 md:grid-cols-3">
         <QueueMetric label="Pending" value={String(activeCount)} />
         <QueueMetric label="Need approval" value={String(approvalCount)} />

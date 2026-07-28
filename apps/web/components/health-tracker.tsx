@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, AlertTriangle, Bed, Droplets, HeartPulse, Pill, Save, SmilePlus, Zap } from "lucide-react";
+import { Activity, AlertTriangle, Bed, Copy, Droplets, HeartPulse, Pill, Save, Smartphone, SmilePlus, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { getHealthSummary, saveHealthCheckIn, type HealthCheckIn, type HealthSummary } from "@/lib/health";
 
@@ -33,6 +33,7 @@ export function HealthTracker() {
   const [summary, setSummary] = useState<HealthSummary | null>(null);
   const [status, setStatus] = useState("Ready for today's check-in.");
   const [saving, setSaving] = useState(false);
+  const shortcutUrl = `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api"}/health/shortcut?token=myagent-health-demo`;
 
   useEffect(() => {
     getHealthSummary()
@@ -69,6 +70,15 @@ export function HealthTracker() {
       setStatus("Could not save health check-in. Make sure the backend is running.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function copyShortcutUrl() {
+    try {
+      await navigator.clipboard.writeText(shortcutUrl);
+      setStatus("Shortcut webhook URL copied.");
+    } catch {
+      setStatus("Browser blocked clipboard access. Select the URL manually.");
     }
   }
 
@@ -144,6 +154,70 @@ export function HealthTracker() {
       </section>
 
       <section className="space-y-4">
+        <article className="rounded-md border border-teal/40 bg-white p-5 shadow-soft">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="flex items-center gap-3">
+                <Smartphone className="text-teal" />
+                <h2 className="text-lg font-semibold">iOS Shortcut sync</h2>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-ink/65">
+                Send Apple Health or Fitness values from Shortcuts into MyAgent. This is the fastest path before building a native iOS app.
+              </p>
+            </div>
+            <button className="inline-flex w-fit items-center gap-2 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white" onClick={copyShortcutUrl} type="button">
+              <Copy size={15} />
+              Copy URL
+            </button>
+          </div>
+
+          <div className="mt-4 rounded-md bg-panel p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink/45">Webhook URL</p>
+            <p className="mt-2 break-all text-sm text-ink/70">{shortcutUrl}</p>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <FitnessMetric label="Steps" value={formatFitnessValue(summary?.latest_fitness?.steps, "")} />
+            <FitnessMetric label="Calories" value={formatFitnessValue(summary?.latest_fitness?.active_calories, " kcal")} />
+            <FitnessMetric label="Sleep" value={formatFitnessValue(summary?.latest_fitness?.sleep_hours, "h")} />
+          </div>
+
+          {summary?.latest_fitness ? (
+            <div className="mt-4 rounded-md border border-line p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal">Latest iOS sync</p>
+              <p className="mt-2 text-sm leading-6 text-ink/65">
+                {summary.latest_fitness.created_at ? new Date(summary.latest_fitness.created_at).toLocaleString() : "Just synced"} from {summary.latest_fitness.source || "iOS Shortcut"}.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+                <span className="rounded-md bg-panel px-2 py-1">Distance: {formatFitnessValue(summary.latest_fitness.distance_km, " km")}</span>
+                <span className="rounded-md bg-panel px-2 py-1">Exercise: {formatFitnessValue(summary.latest_fitness.exercise_minutes, " min")}</span>
+                <span className="rounded-md bg-panel px-2 py-1">Heart: {formatFitnessValue(summary.latest_fitness.resting_heart_rate, " bpm")}</span>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 rounded-md border border-dashed border-line p-3 text-sm text-ink/60">
+              No iOS sync yet. Create the Shortcut, run it once, then refresh this page.
+            </div>
+          )}
+
+          <details className="mt-4 rounded-md border border-line p-4">
+            <summary className="cursor-pointer text-sm font-semibold">Shortcut JSON body</summary>
+            <pre className="mt-3 overflow-x-auto rounded-md bg-panel p-3 text-xs leading-5 text-ink/70">
+{`{
+  "steps": 8500,
+  "active_calories": 420,
+  "distance_km": 5.2,
+  "exercise_minutes": 35,
+  "stand_hours": 9,
+  "sleep_hours": 7.25,
+  "resting_heart_rate": 68,
+  "synced_for": "today",
+  "notes": "Synced from iPhone Shortcut"
+}`}
+            </pre>
+          </details>
+        </article>
+
         {summary?.urgent_warning && (
           <article className="rounded-md border border-coral/70 bg-white p-5 shadow-soft">
             <div className="flex items-start gap-3">
@@ -197,6 +271,20 @@ export function HealthTracker() {
       </section>
     </div>
   );
+}
+
+function FitnessMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md bg-panel p-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink/45">{label}</p>
+      <p className="mt-2 text-xl font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function formatFitnessValue(value: number | null | undefined, suffix: string) {
+  if (value === null || value === undefined) return "--";
+  return `${Number(value).toLocaleString()}${suffix}`;
 }
 
 function Metric({

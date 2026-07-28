@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     linkedin_redirect_uri: str = "http://localhost:8000/api/connectors/linkedin/callback"
     linkedin_scopes: str = "openid profile email"
     emergency_alerts_provider: str = "nws"
+    health_webhook_token: str = "myagent-health-demo"
     default_alert_city: str = "New York"
     default_alert_lat: float = 40.7128
     default_alert_lon: float = -74.0060

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from app.health.schemas import HealthCheckIn
+from app.health.schemas import HealthCheckIn, HealthShortcutSync
 from app.profile.store import read_profile, write_profile
 
 URGENT_SYMPTOMS = {
@@ -46,12 +46,45 @@ def save_health_check_in(payload: HealthCheckIn) -> dict[str, Any]:
 def get_health_summary() -> dict[str, Any]:
     health = (read_profile().get("health") or {})
     check_ins = list(health.get("check_ins") or [])
+    fitness_syncs = list(health.get("fitness_syncs") or [])
     latest = health.get("latest")
+    latest_fitness = health.get("latest_fitness")
+    insights = build_insights(latest, check_ins[:7]) if latest else []
+    insights.extend(build_fitness_insights(latest_fitness, fitness_syncs[:7]))
     return {
         "latest": latest,
+        "latest_fitness": latest_fitness,
         "check_ins": check_ins[:30],
-        "insights": build_insights(latest, check_ins[:7]) if latest else [],
+        "fitness_syncs": fitness_syncs[:30],
+        "insights": insights,
         "urgent_warning": detect_urgent_warning(latest) if latest else None,
+        "disclaimer": "MyAgent Health tracks patterns and reminders only. It does not diagnose, treat, or replace a doctor.",
+    }
+
+
+def save_shortcut_sync(payload: HealthShortcutSync) -> dict[str, Any]:
+    sync = payload.model_dump()
+    sync["created_at"] = datetime.now(UTC).isoformat()
+    sync["source"] = sync.get("source") or "ios_shortcut"
+
+    profile = read_profile()
+    health = profile.get("health") or {}
+    fitness_syncs = list(health.get("fitness_syncs") or [])
+    fitness_syncs.insert(0, sync)
+
+    updated_health = {
+        **health,
+        "fitness_syncs": fitness_syncs[:60],
+        "latest_fitness": sync,
+        "updated_at": datetime.now(UTC).isoformat(),
+    }
+    write_profile({"health": updated_health})
+
+    return {
+        "saved": True,
+        "latest_fitness": sync,
+        "fitness_syncs": fitness_syncs[:30],
+        "insights": build_fitness_insights(sync, fitness_syncs[:7]),
         "disclaimer": "MyAgent Health tracks patterns and reminders only. It does not diagnose, treat, or replace a doctor.",
     }
 
@@ -109,6 +142,80 @@ def build_insights(latest: dict[str, Any], recent: list[dict[str, Any]]) -> list
             "severity": "safe",
         }
     ]
+
+
+def build_fitness_insights(latest: dict[str, Any] | None, recent: list[dict[str, Any]]) -> list[dict[str, str]]:
+    if not latest:
+        return []
+
+    insights = []
+    steps = latest.get("steps")
+    sleep_hours = latest.get("sleep_hours")
+    exercise_minutes = latest.get("exercise_minutes")
+    active_calories = latest.get("active_calories")
+    resting_heart_rate = latest.get("resting_heart_rate")
+
+    if steps is not None and steps < 3000:
+        insights.append(
+            {
+                "title": "Low movement today",
+                "body": "Apple Health steps are low. MyAgent can suggest a light walk if your calendar has room.",
+                "severity": "safe",
+            }
+        )
+    if steps is not None and steps >= 8000:
+        insights.append(
+            {
+                "title": "Strong activity day",
+                "body": "Your step count is strong today. MyAgent will keep it as positive habit progress.",
+                "severity": "good",
+            }
+        )
+    if sleep_hours is not None and sleep_hours < 6:
+        insights.append(
+            {
+                "title": "Apple Health sleep is low",
+                "body": "Sleep synced from iPhone is below 6 hours. MyAgent should protect recovery time tonight.",
+                "severity": "warning",
+            }
+        )
+    if exercise_minutes is not None and exercise_minutes >= 30:
+        insights.append(
+            {
+                "title": "Workout signal synced",
+                "body": "Exercise minutes were synced from iOS. MyAgent can use this when balancing workload and recovery.",
+                "severity": "good",
+            }
+        )
+    if active_calories is not None and active_calories > 700:
+        insights.append(
+            {
+                "title": "High activity load",
+                "body": "Active calories look high today. If tomorrow is busy, MyAgent should recommend an easier evening.",
+                "severity": "safe",
+            }
+        )
+    if resting_heart_rate is not None and resting_heart_rate >= 100:
+        insights.append(
+            {
+                "title": "Resting heart rate is elevated",
+                "body": "Your synced resting heart rate is high. If you feel unwell or this is unusual, consider medical advice.",
+                "severity": "warning",
+            }
+        )
+
+    if len(recent) >= 3:
+        average_steps = sum(int(item.get("steps") or 0) for item in recent) / len(recent)
+        if average_steps and average_steps < 4000:
+            insights.append(
+                {
+                    "title": "Movement trend is low",
+                    "body": "Recent synced step average is low. MyAgent can add short walks around your schedule.",
+                    "severity": "safe",
+                }
+            )
+
+    return insights
 
 
 def detect_urgent_warning(check_in: dict[str, Any] | None) -> str | None:

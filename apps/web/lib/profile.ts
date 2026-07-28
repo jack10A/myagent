@@ -57,6 +57,12 @@ export type MyAgentProfile = {
     locale?: string;
     connected_at?: string;
     mode?: string;
+    profile_url?: string;
+    headline?: string;
+    current_role?: string;
+    target_role?: string;
+    skills?: string[];
+    about?: string;
   } | null;
   cv?: {
     role_guess?: string;

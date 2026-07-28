@@ -1,4 +1,5 @@
 import { API_URL } from "@/lib/api";
+import type { ApprovalItem } from "@/lib/approvals";
 
 export type JobRecommendation = {
   id: string;
@@ -20,11 +21,18 @@ export type JobRecommendation = {
 export type JobItem = {
   id: string;
   job_key: string;
-  status: "saved" | "preparing" | "applied" | "rejected";
+  status: JobStatus;
   job: JobRecommendation;
+  company_name?: string;
+  job_url?: string;
+  recruiter_email?: string;
+  follow_up_at?: string;
+  notes?: string;
   created_at: string;
   updated_at: string;
 };
+
+export type JobStatus = "saved" | "preparing" | "applied" | "interview" | "offer" | "rejected";
 
 export type JobTask = {
   id: string;
@@ -37,7 +45,44 @@ export type JobTask = {
   talking_points: string[];
   cover_email: string;
   search_links: Record<string, string>;
+  company_name?: string;
+  job_url?: string;
+  recruiter_email?: string;
+  follow_up_at?: string;
+  notes?: string;
 };
+
+export type JobDetailsUpdate = {
+  company_name?: string;
+  job_url?: string;
+  recruiter_email?: string;
+  follow_up_at?: string;
+  notes?: string;
+};
+
+export type JobSearchResponse = {
+  query: string;
+  location: string;
+  profile: {
+    target_role: string;
+    linkedin_ready: boolean;
+    skills: string[];
+    strongest_language: string;
+  };
+  results: JobRecommendation[];
+};
+
+export async function searchJobs(query: string, location?: string): Promise<JobSearchResponse> {
+  const response = await fetch(`${API_URL}/growth/jobs/search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, location })
+  });
+  if (!response.ok) {
+    throw new Error("Could not search job targets");
+  }
+  return response.json() as Promise<JobSearchResponse>;
+}
 
 export async function getJobs(): Promise<{ items: JobItem[]; tasks: JobTask[]; count: number }> {
   const response = await fetch(`${API_URL}/growth/jobs`, { cache: "no-store" });
@@ -69,6 +114,30 @@ export async function updateJobStatus(id: string, status: JobItem["status"]): Pr
     throw new Error("Could not update job status");
   }
   return response.json() as Promise<{ item: JobItem; tasks: JobTask[] }>;
+}
+
+export async function updateJobDetails(id: string, details: JobDetailsUpdate): Promise<{ item: JobItem; tasks: JobTask[] }> {
+  const response = await fetch(`${API_URL}/growth/jobs/${id}/details`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(details)
+  });
+  if (!response.ok) {
+    throw new Error("Could not update job details");
+  }
+  return response.json() as Promise<{ item: JobItem; tasks: JobTask[] }>;
+}
+
+export async function prepareJobOutreach(id: string, recipient?: string): Promise<{ approval: ApprovalItem }> {
+  const response = await fetch(`${API_URL}/growth/jobs/${id}/outreach`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ recipient })
+  });
+  if (!response.ok) {
+    throw new Error("Could not prepare job outreach");
+  }
+  return response.json() as Promise<{ approval: ApprovalItem }>;
 }
 
 export function jobKey(job: JobRecommendation) {

@@ -1,13 +1,16 @@
 "use client";
 
-import { BriefcaseBusiness, CheckCircle2, ExternalLink, Mail, RefreshCw, Send } from "lucide-react";
+import Link from "next/link";
+import { BriefcaseBusiness, CheckCircle2, Copy, ExternalLink, FileText, Mail, RefreshCw, Send, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
-import { getJobs, updateJobStatus, type JobItem, type JobTask } from "@/lib/jobs";
+import { getJobs, prepareJobOutreach, updateJobStatus, type JobItem, type JobTask } from "@/lib/jobs";
 
 export function JobTaskList() {
   const [tasks, setTasks] = useState<JobTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [outreachId, setOutreachId] = useState<string | null>(null);
+  const [preparedApprovalId, setPreparedApprovalId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
@@ -40,6 +43,29 @@ export function JobTaskList() {
     }
   }
 
+  async function prepareOutreach(id: string, recipient?: string) {
+    setOutreachId(id);
+    setError(null);
+    try {
+      const data = await prepareJobOutreach(id, recipient);
+      setPreparedApprovalId(data.approval.id);
+      window.dispatchEvent(new Event("myagent:approval-created"));
+      await setStatus(id, "preparing");
+    } catch {
+      setError("Could not prepare outreach. Make sure the backend is running.");
+    } finally {
+      setOutreachId(null);
+    }
+  }
+
+  async function copyText(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      setError("Clipboard permission was blocked by the browser.");
+    }
+  }
+
   if (loading) {
     return <div className="rounded-md border border-line bg-white p-5 text-sm text-ink/65 shadow-soft">Loading job tasks...</div>;
   }
@@ -57,6 +83,14 @@ export function JobTaskList() {
       </div>
 
       {error ? <div className="rounded-md border border-coral/50 bg-coral/10 p-4 text-sm text-coral">{error}</div> : null}
+      {preparedApprovalId ? (
+        <div className="flex flex-col gap-3 rounded-md border border-teal/40 bg-teal/10 p-4 text-sm text-ink/70 shadow-soft sm:flex-row sm:items-center sm:justify-between">
+          <span>Outreach draft is waiting in Approval Inbox. Review the recipient and body before approving.</span>
+          <Link className="w-fit rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white" href="#approval-inbox">
+            Review approvals
+          </Link>
+        </div>
+      ) : null}
 
       {!tasks.length ? (
         <div className="rounded-md border border-line bg-white p-5 shadow-soft">
@@ -90,26 +124,47 @@ export function JobTaskList() {
                   <p className="mt-2 text-sm leading-6 text-ink/70">{task.next_step}</p>
                 </div>
 
-                <details className="mt-3 rounded-md border border-line p-4">
-                  <summary className="cursor-pointer text-sm font-semibold">Prep package</summary>
-                  <div className="mt-3 grid gap-3">
-                    {task.apply_prep.map((step) => (
-                      <div className="rounded-md bg-panel p-3 text-sm text-ink/70" key={step}>{step}</div>
-                    ))}
-                    <div className="rounded-md bg-panel p-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal">Talking points</p>
-                      <ul className="mt-2 space-y-2 text-sm leading-6 text-ink/70">
-                        {task.talking_points.map((point) => <li key={point}>{point}</li>)}
-                      </ul>
+                <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_0.9fr]">
+                  <PrepPanel icon={<FileText size={16} className="text-teal" />} title="Application checklist">
+                    <div className="grid gap-2">
+                      {task.apply_prep.map((step, index) => (
+                        <div className="flex gap-3 rounded-md bg-panel p-3 text-sm text-ink/70" key={step}>
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white text-xs font-semibold text-teal">{index + 1}</span>
+                          <span>{step}</span>
+                        </div>
+                      ))}
                     </div>
-                    <pre className="whitespace-pre-wrap rounded-md bg-panel p-3 font-sans text-sm leading-6 text-ink/70">{task.cover_email}</pre>
+                  </PrepPanel>
+
+                  <PrepPanel icon={<Sparkles size={16} className="text-gold" />} title="Interview talking points">
+                    <ul className="space-y-2 text-sm leading-6 text-ink/70">
+                      {task.talking_points.map((point) => <li key={point}>{point}</li>)}
+                    </ul>
+                  </PrepPanel>
+                </div>
+
+                <div className="mt-4 rounded-md border border-gold/35 bg-gold/10 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gold">Recruiter email draft</p>
+                      <p className="mt-1 text-sm text-ink/60">Prepare this as a Guardian approval before Gmail creates a draft.</p>
+                    </div>
+                    <button
+                      className="inline-flex w-fit items-center gap-2 rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold"
+                      onClick={() => void copyText(task.cover_email)}
+                      type="button"
+                    >
+                      <Copy size={14} />
+                      Copy
+                    </button>
                   </div>
-                </details>
+                  <pre className="mt-3 whitespace-pre-wrap rounded-md bg-white p-4 font-sans text-sm leading-6 text-ink/75">{task.cover_email}</pre>
+                </div>
               </div>
 
               <div className="flex flex-wrap gap-2 lg:max-w-56 lg:justify-end">
-                <button className="inline-flex items-center gap-2 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-45" disabled={savingId === task.id} onClick={() => void setStatus(task.id, "preparing")} type="button">
-                  <Mail size={16} /> Prep
+                <button className="inline-flex items-center gap-2 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-45" disabled={savingId === task.id || outreachId === task.id} onClick={() => void prepareOutreach(task.id, task.recruiter_email)} type="button">
+                  <Mail size={16} /> {outreachId === task.id ? "Preparing..." : "Prepare outreach"}
                 </button>
                 <button className="inline-flex items-center gap-2 rounded-md border border-line px-4 py-2 text-sm font-semibold disabled:opacity-45" disabled={savingId === task.id} onClick={() => void setStatus(task.id, "applied")} type="button">
                   <Send size={16} /> Applied
@@ -128,5 +183,17 @@ export function JobTaskList() {
         ))}
       </div>
     </section>
+  );
+}
+
+function PrepPanel({ children, icon, title }: { children: React.ReactNode; icon: React.ReactNode; title: string }) {
+  return (
+    <div className="rounded-md border border-line p-4">
+      <div className="flex items-center gap-2">
+        {icon}
+        <h4 className="text-sm font-semibold">{title}</h4>
+      </div>
+      <div className="mt-3">{children}</div>
+    </div>
   );
 }

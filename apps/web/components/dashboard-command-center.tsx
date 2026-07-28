@@ -24,6 +24,7 @@ import { useEffect, useState } from "react";
 import { AgentCommandBar } from "@/components/agent-command-bar";
 import { CalendarAgendaCard } from "@/components/calendar-agenda-card";
 import { DashboardProfile } from "@/components/dashboard-profile";
+import { TodayBriefing } from "@/components/today-briefing";
 import { TravelGuardianCard } from "@/components/travel-guardian-card";
 import { getProfile, type MyAgentProfile } from "@/lib/profile";
 
@@ -182,6 +183,8 @@ export function DashboardCommandCenter() {
       </section>
 
       <AgentCommandBar />
+
+      <TodayBriefing />
 
       <section className="mt-6">
         <div className="mb-3 flex items-center justify-between gap-3">

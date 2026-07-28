@@ -137,6 +137,7 @@ def create_gmail_draft(payload: dict[str, Any]) -> dict[str, Any]:
         subject=payload.get("subject") or "Follow-up",
         request=payload.get("request") or "",
         snippet=payload.get("snippet") or "",
+        body=payload.get("body"),
     )
 
     body: dict[str, Any] = {"message": {"raw": raw_message}}
@@ -177,7 +178,7 @@ def refresh_google_access_token(refresh_token: str) -> str:
     return access_token
 
 
-def build_reply_message(sender: str, to: str | None, subject: str, request: str, snippet: str) -> str:
+def build_reply_message(sender: str, to: str | None, subject: str, request: str, snippet: str, body: str | None = None) -> str:
     _, email_address = parseaddr(to or "")
     recipient = email_address or to
     if not recipient:
@@ -187,7 +188,7 @@ def build_reply_message(sender: str, to: str | None, subject: str, request: str,
     message["To"] = recipient
     message["From"] = sender
     message["Subject"] = normalize_subject(subject)
-    message.set_content(build_draft_body(request=request, snippet=snippet))
+    message.set_content(body or build_draft_body(request=request, snippet=snippet))
     return base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
 
 

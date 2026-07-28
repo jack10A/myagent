@@ -6,7 +6,7 @@ from app.activity.store import read_activity
 from app.approvals.store import read_approvals
 from app.calendar.service import build_calendar_agenda
 from app.capture.service import capture_tasks
-from app.growth.jobs import job_tasks
+from app.growth.jobs import application_followups, job_tasks
 from app.growth.learning import learning_tasks
 from app.health.service import get_health_summary
 from app.profile.store import read_profile
@@ -141,15 +141,29 @@ def build_demo_notifications(limit: int = 40) -> dict[str, Any]:
             metadata={"id": task.get("id")},
         )
 
+    for followup in application_followups()[:6]:
+        add(
+            "job",
+            followup["title"],
+            followup["body"],
+            priority=followup["priority"],
+            source="Application Follow-Up Agent",
+            action_label=followup["action_label"],
+            action_href=followup["action_href"],
+            created_at=followup.get("created_at"),
+            metadata=followup.get("metadata"),
+        )
+
     for task in job_tasks()[:3]:
+        next_step = task.get("next_step") or "Continue this job application prep."
         add(
             "job",
             f"Job prep: {task.get('title') or 'tracked job'}",
-            (task.get("next_step") or {}).get("task") or "Continue this job application prep.",
+            next_step.get("task") if isinstance(next_step, dict) else str(next_step),
             priority="medium",
             source="Job Radar",
-            action_label="Open growth",
-            action_href="/growth",
+            action_label="Open tasks",
+            action_href="/tasks",
             metadata={"id": task.get("id")},
         )
 

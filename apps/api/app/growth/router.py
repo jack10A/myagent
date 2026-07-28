@@ -8,7 +8,7 @@ from app.agents.collaboration import run_agent_collaboration
 from app.auth.dependencies import get_current_user
 from app.db.models import User
 from app.growth.service import analyze_cv, build_growth_plan
-from app.growth.jobs import job_tasks, read_job_items, track_job, update_job_status
+from app.growth.jobs import create_job_outreach_approval, job_tasks, read_job_items, search_jobs, track_job, update_job_details, update_job_status
 from app.growth.learning import learning_tasks, read_learning_items, track_learning_resource, update_learning_status
 from app.orchestration.schemas import IncomingEvent
 from app.orchestration.service import detect_situation_from_context
@@ -31,6 +31,23 @@ class JobTrackRequest(BaseModel):
 
 class JobStatusRequest(BaseModel):
     status: str
+
+
+class JobDetailsRequest(BaseModel):
+    company_name: str | None = None
+    job_url: str | None = None
+    recruiter_email: str | None = None
+    follow_up_at: str | None = None
+    notes: str | None = None
+
+
+class JobSearchRequest(BaseModel):
+    query: str
+    location: str | None = None
+
+
+class JobOutreachRequest(BaseModel):
+    recipient: str | None = None
 
 
 @router.get("/plan")
@@ -90,6 +107,11 @@ def list_jobs() -> dict:
     return {"items": items, "tasks": job_tasks(), "count": len(items)}
 
 
+@router.post("/jobs/search")
+def search_job_targets(payload: JobSearchRequest) -> dict:
+    return search_jobs(query=payload.query, location=payload.location)
+
+
 @router.post("/jobs/track")
 def track_job_target(payload: JobTrackRequest) -> dict:
     item = track_job(payload.job)
@@ -98,9 +120,25 @@ def track_job_target(payload: JobTrackRequest) -> dict:
 
 @router.patch("/jobs/{item_id}")
 def update_job(item_id: str, payload: JobStatusRequest) -> dict:
-    if payload.status not in {"saved", "preparing", "applied", "rejected"}:
+    if payload.status not in {"saved", "preparing", "applied", "interview", "offer", "rejected"}:
         raise HTTPException(status_code=400, detail="Unsupported job status")
     item = update_job_status(item_id, payload.status)
     if not item:
         raise HTTPException(status_code=404, detail="Job item not found")
     return {"item": item, "tasks": job_tasks()}
+
+
+@router.patch("/jobs/{item_id}/details")
+def update_job_metadata(item_id: str, payload: JobDetailsRequest) -> dict:
+    item = update_job_details(item_id, payload.model_dump())
+    if not item:
+        raise HTTPException(status_code=404, detail="Job item not found")
+    return {"item": item, "tasks": job_tasks()}
+
+
+@router.post("/jobs/{item_id}/outreach")
+def prepare_job_outreach(item_id: str, payload: JobOutreachRequest) -> dict:
+    approval = create_job_outreach_approval(item_id, payload.recipient)
+    if not approval:
+        raise HTTPException(status_code=404, detail="Tracked job not found")
+    return {"approval": approval}

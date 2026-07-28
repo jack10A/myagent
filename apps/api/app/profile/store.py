@@ -46,14 +46,20 @@ def write_profile(profile: dict[str, Any]) -> dict[str, Any]:
 
 
 def profile_to_context(profile: dict[str, Any]) -> dict:
+    linkedin = profile.get("linkedin") or {}
+    linkedin_details = linkedin if isinstance(linkedin, dict) else {}
+    linkedin_skills = linkedin_details.get("skills") or []
+    cv_skills = (profile.get("cv") or {}).get("detected_skills", [])
+    field = profile.get("field")
+    target_role = linkedin_details.get("target_role") or field
     return {
         "identity": {
             "name": profile.get("name"),
             "age": profile.get("age"),
             "life_stage": profile.get("lifeStage"),
-            "role": profile.get("field"),
-            "target_role": profile.get("field"),
-            "industry": profile.get("field"),
+            "role": linkedin_details.get("current_role") or field,
+            "target_role": target_role,
+            "industry": field,
         },
         "goals": [profile["goal"]] if profile.get("goal") else [],
         "career_sources": split_sources(profile.get("careerAuth")),
@@ -62,7 +68,7 @@ def profile_to_context(profile: dict[str, Any]) -> dict:
         "gmail": profile.get("gmail") or {},
         "calendar": profile.get("calendar") or {},
         "cv": profile.get("cv"),
-        "skills": (profile.get("cv") or {}).get("detected_skills", []),
+        "skills": merge_unique(cv_skills, linkedin_skills),
         "skill_gaps": (profile.get("cv") or {}).get("improvements", [])[:4],
         "captures": profile.get("captures") or [],
         "health": profile.get("health") or {},
@@ -79,3 +85,15 @@ def split_sources(value: str | None) -> list[str]:
     if not value:
         return []
     return [part.strip() for part in value.split(",") if part.strip()]
+
+
+def merge_unique(first: list[str], second: list[str]) -> list[str]:
+    seen = set()
+    merged = []
+    for item in first + second:
+        normalized = str(item).strip()
+        key = normalized.lower()
+        if normalized and key not in seen:
+            seen.add(key)
+            merged.append(normalized)
+    return merged

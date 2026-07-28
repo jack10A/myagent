@@ -17,9 +17,25 @@ export type HealthInsight = {
   severity: string;
 };
 
+export type FitnessSync = {
+  steps?: number | null;
+  active_calories?: number | null;
+  distance_km?: number | null;
+  exercise_minutes?: number | null;
+  stand_hours?: number | null;
+  sleep_hours?: number | null;
+  resting_heart_rate?: number | null;
+  source?: string;
+  synced_for?: string | null;
+  notes?: string | null;
+  created_at?: string;
+};
+
 export type HealthSummary = {
   latest?: (HealthCheckIn & { created_at?: string }) | null;
+  latest_fitness?: FitnessSync | null;
   check_ins: Array<HealthCheckIn & { created_at?: string }>;
+  fitness_syncs?: FitnessSync[];
   insights: HealthInsight[];
   urgent_warning?: string | null;
   disclaimer: string;

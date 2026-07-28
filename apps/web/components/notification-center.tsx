@@ -53,7 +53,7 @@ export function NotificationCenter() {
 
   const combined = useMemo(() => [...liveAlerts.map(alertToNotification), ...(feed?.items ?? [])], [feed, liveAlerts]);
   const filtered = filter === "all" ? combined : combined.filter((item) => item.priority === filter || item.kind === filter);
-  const filters = ["all", "urgent", "high", "approval", "email", "calendar", "health", "learning", "capture"];
+  const filters = ["all", "urgent", "high", "approval", "email", "calendar", "job", "health", "learning", "capture"];
 
   function useLiveLocation() {
     if (!navigator.geolocation) {

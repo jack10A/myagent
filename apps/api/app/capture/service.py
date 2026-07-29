@@ -12,6 +12,7 @@ from uuid import uuid4
 import httpx
 from youtube_transcript_api import YouTubeTranscriptApi
 
+from app.agents.llm import get_llm_client
 from app.guardian.schemas import GuardianReviewRequest
 from app.guardian.service import review_action
 from app.profile.store import read_profile, write_profile
@@ -96,6 +97,16 @@ def analyze_capture(payload) -> dict[str, Any]:
     people = extract_people(transcript)
     questions_to_ask = build_questions_to_ask(payload.capture_type, important_points, decisions)
     answer = build_answer(payload.question, ranked_segments) if payload.question else None
+    ai_insights = build_ai_capture_insights(payload.capture_type, transcript, payload.question, ranked_segments)
+    if ai_insights:
+        summary = ai_insights.get("summary") or summary
+        short_summary = ai_insights.get("short_summary") or short_summary
+        important_points = normalize_list(ai_insights.get("important_points"), important_points, limit=5)
+        action_items = normalize_list(ai_insights.get("action_items"), action_items, limit=5)
+        decisions = normalize_list(ai_insights.get("decisions"), decisions, limit=4)
+        people = normalize_list(ai_insights.get("people"), people, limit=8)
+        questions_to_ask = normalize_list(ai_insights.get("questions_to_ask"), questions_to_ask, limit=4)
+        answer = ai_insights.get("answer") or answer
 
     guardian = review_action(
         GuardianReviewRequest(
@@ -169,8 +180,8 @@ def normalize_text(text: str) -> str:
 
 
 def split_segments(text: str) -> list[dict[str, Any]]:
-    timestamp_pattern = re.compile(r"(?:(\d{1,2}:)?\d{1,2}:\d{2})")
-    raw_parts = re.split(r"(?=(?:(?:\d{1,2}:)?\d{1,2}:\d{2}))", text)
+    timestamp_pattern = re.compile(r"(?<!\d)(?:(?:\d{1,2}:)?\d{1,2}:\d{2})")
+    raw_parts = re.split(r"(?=(?<!\d)(?:(?:\d{1,2}:)?\d{1,2}:\d{2}))", text)
     segments = []
     for part in raw_parts:
         clean = part.strip()
@@ -183,11 +194,40 @@ def split_segments(text: str) -> list[dict[str, Any]]:
             segments.append({"timestamp": timestamp, "text": body[:700], "relevance": 0})
 
     if segments:
-        return segments
+        return merge_caption_segments(segments)
 
     sentences = re.split(r"(?<=[.!?])\s+", text)
     grouped = [" ".join(sentences[index : index + 3]).strip() for index in range(0, len(sentences), 3)]
     return [{"timestamp": None, "text": item[:700], "relevance": 0} for item in grouped if item]
+
+
+def merge_caption_segments(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if len(segments) < 8:
+        return segments
+
+    merged = []
+    current_timestamp = segments[0]["timestamp"]
+    current_text: list[str] = []
+
+    for segment in segments:
+        text = str(segment["text"]).strip()
+        if not text:
+            continue
+        current_text.append(text)
+        combined = normalize_text(" ".join(current_text))
+        sentence_boundary = text.endswith((".", "?", "!"))
+        if len(combined) >= 360 or (len(combined) >= 220 and sentence_boundary):
+            merged.append({"timestamp": current_timestamp, "text": combined[:900], "relevance": 0})
+            current_text = []
+            current_timestamp = None
+
+        if current_timestamp is None:
+            current_timestamp = segment["timestamp"]
+
+    if current_text:
+        merged.append({"timestamp": current_timestamp, "text": normalize_text(" ".join(current_text))[:900], "relevance": 0})
+
+    return merged or segments
 
 
 def keywords(text: str) -> list[str]:
@@ -254,7 +294,27 @@ def extract_decisions(text: str) -> list[str]:
 
 def extract_people(text: str) -> list[str]:
     people = re.findall(r"\b[A-Z][a-z]{2,}(?:\s[A-Z][a-z]{2,})?\b", text)
-    blocked = {"The", "This", "That", "Meeting", "YouTube", "Guardian", "MyAgent", "Important", "Action", "Decision", "Summary"}
+    blocked = {
+        "The",
+        "This",
+        "That",
+        "Meeting",
+        "YouTube",
+        "Guardian",
+        "MyAgent",
+        "Important",
+        "Action",
+        "Decision",
+        "Summary",
+        "Wait",
+        "Then",
+        "Today",
+        "Okay",
+        "Inside",
+        "After",
+        "Again",
+        "Everyone",
+    }
     unique = []
     for person in people:
         if person not in blocked and person not in unique:
@@ -279,6 +339,72 @@ def build_questions_to_ask(capture_type: str, important_points: list[str], decis
     else:
         questions.append("Should MyAgent draft a follow-up message from this capture?")
     return questions[:4]
+
+
+def build_ai_capture_insights(capture_type: str, transcript: str, question: str | None, ranked_segments: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if len(transcript) < 500:
+        return None
+    transcript_excerpt = transcript[:10000]
+    relevant_context = "\n".join(
+        f"- {segment.get('timestamp') or 'No timestamp'}: {segment.get('text')}"
+        for segment in ranked_segments[:8]
+    )
+    system = (
+        "You are MyAgent Capture Agent. Analyze transcripts into useful memory. "
+        "Return only valid JSON. Do not invent facts. Keep actions practical and approval-safe."
+    )
+    user = f"""
+Capture type: {capture_type}
+User question: {question or "What are the important parts and next actions?"}
+
+Most relevant timestamped excerpts:
+{relevant_context}
+
+Transcript excerpt:
+{transcript_excerpt}
+
+Return JSON with these keys:
+summary: 2-4 sentence clear summary.
+short_summary: one sentence.
+important_points: 4-5 concise bullets.
+action_items: 2-4 practical next actions for the user.
+decisions: decisions only if explicit, otherwise [].
+people: real people only, otherwise [].
+questions_to_ask: 2-3 useful follow-up questions.
+answer: direct answer to the user question with timestamps when useful.
+"""
+    try:
+        raw = get_llm_client().complete(system=system, user=user)
+        return parse_json_object(raw)
+    except Exception:
+        return None
+
+
+def parse_json_object(raw: str) -> dict[str, Any] | None:
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?", "", cleaned, flags=re.IGNORECASE).strip()
+        cleaned = re.sub(r"```$", "", cleaned).strip()
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    try:
+        parsed = json.loads(cleaned[start : end + 1])
+        return parsed if isinstance(parsed, dict) else None
+    except json.JSONDecodeError:
+        return None
+
+
+def normalize_list(value: Any, fallback: list[str], limit: int) -> list[str]:
+    if not isinstance(value, list):
+        return fallback[:limit]
+    clean = []
+    for item in value:
+        text = normalize_text(str(item))
+        if text and text not in clean:
+            clean.append(text[:260])
+    return clean[:limit] or fallback[:limit]
 
 
 def clean_capture_sentence(text: str) -> str:

@@ -377,6 +377,7 @@ function buildLearningWhy(result: CaptureResult) {
 }
 
 function statusForCaptureResult(data: CaptureResult) {
+  if (data.saved_to_memory && data.transcript_text && data.backend_source === "local") return "Cloud captions were blocked, so MyAgent used your local backend, fetched the transcript, and saved it.";
   if (data.saved_to_memory && data.transcript_text) return "Fetched YouTube captions, analyzed them, and saved the capture into memory.";
   if (data.saved_to_memory) return "Summary created and saved into memory.";
   if (data.capture_type === "meeting") return "Guardian requires consent before saving this meeting.";

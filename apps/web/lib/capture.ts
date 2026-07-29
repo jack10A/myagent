@@ -14,6 +14,7 @@ export type CaptureResult = {
   title: string;
   source_url?: string | null;
   transcript_text?: string | null;
+  backend_source?: "primary" | "local";
   summary: string;
   short_summary: string;
   important_points: string[];
@@ -37,6 +38,8 @@ export type CaptureResult = {
   memory_id?: string | null;
 };
 
+const LOCAL_API_URL = "http://localhost:8000/api";
+
 export type CaptureTask = {
   id: string;
   title: string;
@@ -48,7 +51,18 @@ export type CaptureTask = {
 };
 
 export async function analyzeCapture(payload: CaptureRequest): Promise<CaptureResult> {
-  const response = await fetch(`${API_URL}/capture/analyze`, {
+  const primary = await postCaptureAnalyze(API_URL, payload);
+  if (shouldTryLocalTranscriptFallback(payload, primary)) {
+    const local = await tryLocalCaptureAnalyze(payload);
+    if (local?.transcript_text) {
+      return { ...local, backend_source: "local" };
+    }
+  }
+  return { ...primary, backend_source: "primary" };
+}
+
+async function postCaptureAnalyze(apiUrl: string, payload: CaptureRequest): Promise<CaptureResult> {
+  const response = await fetch(`${apiUrl}/capture/analyze`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
@@ -59,6 +73,25 @@ export async function analyzeCapture(payload: CaptureRequest): Promise<CaptureRe
   }
 
   return response.json() as Promise<CaptureResult>;
+}
+
+function shouldTryLocalTranscriptFallback(payload: CaptureRequest, result: CaptureResult) {
+  return (
+    payload.capture_type === "youtube" &&
+    Boolean(payload.source_url) &&
+    !payload.transcript.trim() &&
+    !result.transcript_text &&
+    !result.saved_to_memory &&
+    !API_URL.includes("localhost")
+  );
+}
+
+async function tryLocalCaptureAnalyze(payload: CaptureRequest): Promise<CaptureResult | null> {
+  try {
+    return await postCaptureAnalyze(LOCAL_API_URL, payload);
+  } catch {
+    return null;
+  }
 }
 
 export async function getCaptureTasks(): Promise<{ tasks: CaptureTask[]; count: number }> {

@@ -10,6 +10,7 @@ from typing import Any
 from uuid import uuid4
 
 import httpx
+from youtube_transcript_api import YouTubeTranscriptApi
 
 from app.guardian.schemas import GuardianReviewRequest
 from app.guardian.service import review_action
@@ -145,8 +146,8 @@ def build_missing_youtube_transcript_result(payload) -> dict[str, Any]:
         "summary": "Paste the YouTube transcript or the important notes from the video, then MyAgent can answer questions and point to the relevant timestamps.",
         "short_summary": "Paste the transcript so MyAgent can answer with timestamps.",
         "important_points": [
-            "Free demo mode does not fetch YouTube transcripts automatically.",
-            "Open the video transcript on YouTube, paste it here, and keep the YouTube link for source memory.",
+            "MyAgent tried to fetch public YouTube captions but this video did not expose a usable transcript.",
+            "If the video has captions in the YouTube UI, paste them here and keep the YouTube link for source memory.",
         ],
         "action_items": ["Paste the transcript, then ask a specific question about the video."],
         "decisions": [],
@@ -352,6 +353,10 @@ def fetch_youtube_transcript(url: str) -> str | None:
     if not video_id:
         return None
 
+    library_transcript = fetch_youtube_transcript_with_library(video_id)
+    if library_transcript:
+        return library_transcript
+
     try:
         with httpx.Client(timeout=12, headers={"User-Agent": "Mozilla/5.0 MyAgent Capture"}) as client:
             list_response = client.get("https://www.youtube.com/api/timedtext", params={"type": "list", "v": video_id})
@@ -372,6 +377,29 @@ def fetch_youtube_transcript(url: str) -> str | None:
             )
             transcript_response.raise_for_status()
             return parse_timedtext(transcript_response.text) or fetch_youtube_transcript_from_watch_page(client, video_id)
+    except Exception:
+        return None
+
+
+def fetch_youtube_transcript_with_library(video_id: str) -> str | None:
+    try:
+        api = YouTubeTranscriptApi()
+        transcript = None
+        for languages in (["en"], ["en-US", "en-GB"], None):
+            try:
+                transcript = api.fetch(video_id, languages=languages) if languages else api.fetch(video_id)
+                break
+            except Exception:
+                continue
+        if not transcript:
+            return None
+        lines = []
+        for snippet in transcript:
+            text = normalize_text(snippet.text)
+            if not text:
+                continue
+            lines.append(f"{format_caption_timestamp(str(snippet.start))} {text}".strip())
+        return normalize_text(" ".join(lines)) or None
     except Exception:
         return None
 

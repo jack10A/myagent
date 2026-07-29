@@ -77,13 +77,16 @@ async function postCaptureAnalyze(apiUrl: string, payload: CaptureRequest): Prom
 
 function shouldTryLocalTranscriptFallback(payload: CaptureRequest, result: CaptureResult) {
   return (
-    payload.capture_type === "youtube" &&
-    Boolean(payload.source_url) &&
+    isYoutubeUrl(payload.source_url) &&
     !payload.transcript.trim() &&
     !result.transcript_text &&
     !result.saved_to_memory &&
     !API_URL.includes("localhost")
   );
+}
+
+function isYoutubeUrl(url?: string | null) {
+  return Boolean(url && /(youtube\.com\/watch|youtu\.be\/|youtube\.com\/shorts)/i.test(url));
 }
 
 async function tryLocalCaptureAnalyze(payload: CaptureRequest): Promise<CaptureResult | null> {

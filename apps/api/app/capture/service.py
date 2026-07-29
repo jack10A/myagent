@@ -51,10 +51,11 @@ STOP_WORDS = {
 def analyze_capture(payload) -> dict[str, Any]:
     transcript = normalize_text(payload.transcript)
     fetched_transcript = False
-    if payload.capture_type == "youtube" and not transcript and payload.source_url:
+    youtube_source = bool(extract_youtube_id(payload.source_url or ""))
+    if youtube_source and not transcript and payload.source_url:
         transcript = fetch_youtube_transcript(payload.source_url) or ""
         fetched_transcript = bool(transcript)
-    if payload.capture_type == "youtube" and not transcript:
+    if youtube_source and not transcript:
         return build_missing_youtube_transcript_result(payload)
 
     if payload.capture_type == "meeting" and not payload.consent_confirmed:
@@ -104,7 +105,7 @@ def analyze_capture(payload) -> dict[str, Any]:
         important_points = normalize_list(ai_insights.get("important_points"), important_points, limit=5)
         action_items = normalize_list(ai_insights.get("action_items"), action_items, limit=5)
         decisions = normalize_list(ai_insights.get("decisions"), decisions, limit=4)
-        people = clean_people_list(normalize_list(ai_insights.get("people"), people, limit=8), capture_type)
+        people = clean_people_list(normalize_list(ai_insights.get("people"), people, limit=8), payload.capture_type)
         questions_to_ask = normalize_list(ai_insights.get("questions_to_ask"), questions_to_ask, limit=4)
         answer = ai_insights.get("answer") or answer
 

@@ -46,7 +46,7 @@ export function CaptureWorkbench() {
 
   const canSubmit = useMemo(() => {
     if (loading) return false;
-    if (captureType === "youtube") return Boolean(sourceUrl.trim()) || transcript.trim().length > 20;
+    if (captureType === "youtube" || isYoutubeUrl(sourceUrl)) return Boolean(sourceUrl.trim()) || transcript.trim().length > 20;
     return transcript.trim().length > 20;
   }, [captureType, loading, sourceUrl, transcript]);
 
@@ -179,12 +179,12 @@ export function CaptureWorkbench() {
           <input className="mt-2 w-full rounded-md border border-line px-3 py-2 text-sm outline-none focus:border-teal" value={title} onChange={(event) => setTitle(event.target.value)} />
         </label>
 
-        {captureType === "youtube" && (
+        {captureType !== "meeting" && (
           <label className="mt-4 block">
-            <span className="text-sm font-semibold">YouTube link</span>
+            <span className="text-sm font-semibold">{isYoutubeUrl(sourceUrl) || captureType === "youtube" ? "YouTube link" : "Source link"}</span>
             <div className="mt-2 flex items-center gap-2 rounded-md border border-line px-3 py-2">
               <LinkIcon size={16} className="text-ink/40" />
-              <input className="w-full text-sm outline-none" placeholder="https://youtube.com/watch?v=..." value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} />
+              <input className="w-full text-sm outline-none" placeholder={captureType === "youtube" ? "https://youtube.com/watch?v=..." : "Optional link, YouTube video, article, or source..."} value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} />
             </div>
           </label>
         )}
@@ -219,7 +219,7 @@ export function CaptureWorkbench() {
             <Play size={16} />
             Use sample
           </button>
-          {captureType === "youtube" && (
+          {(captureType === "youtube" || isYoutubeUrl(sourceUrl)) && (
             <button className="inline-flex items-center gap-2 rounded-md border border-line px-4 py-2 text-sm font-semibold" onClick={() => setTranscript(sampleYoutubeTranscript)}>
               <Play size={16} />
               YouTube sample
@@ -231,7 +231,7 @@ export function CaptureWorkbench() {
           <span className="text-sm font-semibold">Transcript or notes</span>
           <textarea
             className="mt-2 min-h-56 w-full resize-y rounded-md border border-line px-3 py-2 text-sm leading-6 outline-none focus:border-teal"
-            placeholder={captureType === "youtube" ? "Paste the YouTube transcript here. Timestamps like 02:15 help MyAgent point to the exact part." : "Paste meeting transcript, lecture notes, or start recording..."}
+            placeholder={captureType === "youtube" || isYoutubeUrl(sourceUrl) ? "Paste the YouTube transcript here. Timestamps like 02:15 help MyAgent point to the exact part." : "Paste meeting transcript, lecture notes, or start recording..."}
             value={transcript}
             onChange={(event) => setTranscript(event.target.value)}
           />
@@ -383,6 +383,10 @@ function statusForCaptureResult(data: CaptureResult) {
   if (data.capture_type === "meeting") return "Guardian requires consent before saving this meeting.";
   if (data.capture_type === "youtube") return "Could not fetch public captions. Paste the transcript and rerun Capture.";
   return "Capture analyzed, but it was not saved.";
+}
+
+function isYoutubeUrl(url: string) {
+  return /(youtube\.com\/watch|youtu\.be\/|youtube\.com\/shorts)/i.test(url);
 }
 
 function ResultList({ title, items }: { title: string; items: string[] }) {

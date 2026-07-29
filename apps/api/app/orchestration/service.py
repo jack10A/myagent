@@ -163,14 +163,32 @@ def process_command(message: str) -> dict:
 def command_to_event(message: str) -> IncomingEvent:
     normalized = message.lower()
     intent_groups = [
-        ({"add prep", "prep block", "create prep", "create calendar", "add calendar", "add 30", "remind me", "reminder"}, "calendar_write_request", "calendar"),
+        (
+            {
+                "add prep",
+                "prep block",
+                "create prep",
+                "create calendar",
+                "add calendar",
+                "add to my calendar",
+                "add to calendar",
+                "put on my calendar",
+                "schedule a",
+                "schedule an",
+                "add 30",
+                "remind me",
+                "reminder",
+            },
+            "calendar_write_request",
+            "calendar",
+        ),
         ({"trip", "travel", "flight", "bus", "train", "airport", "passport", "route"}, "travel_guardian_request", "calendar"),
+        ({"calendar", "schedule", "plan my", "reschedule", "appointment", "tomorrow", "agenda", "prepare me", "prepare for"}, "planning_request", "calendar"),
         ({"emergency", "accident", "storm", "weather", "danger", "safe near", "near me"}, "emergency_alert", "guardian"),
         ({"email", "mail", "gmail", "inbox", "reply", "send a message"}, "email_request", "gmail"),
         ({"job", "career", "cv", "resume", "github", "study", "course", "skill"}, "career_request", "growth"),
         ({"meeting", "youtube", "transcript", "summarize", "summary", "record"}, "capture_request", "capture"),
         ({"health", "sleep", "steps", "calories", "exercise", "mood", "symptom"}, "health_request", "health"),
-        ({"calendar", "schedule", "plan my", "reschedule", "appointment", "tomorrow", "agenda", "prepare me", "prepare for"}, "planning_request", "calendar"),
     ]
     for keywords, event_type, source in intent_groups:
         if any(keyword in normalized for keyword in keywords):

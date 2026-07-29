@@ -93,13 +93,13 @@ def calendar_cards(agenda: dict[str, Any]) -> list[dict[str, Any]]:
         result.append(
             card(
                 "calendar",
-                "Schedule conflict",
+                conflict.get("title") or "Schedule conflict",
                 conflict.get("description") or "Calendar Agent found overlapping events.",
-                "high",
+                calendar_conflict_priority(conflict),
                 "Calendar Agent",
                 "Open tasks",
                 "/tasks",
-                {"id": conflict.get("id")},
+                {"id": conflict.get("id"), "conflict_type": conflict.get("conflict_type")},
             )
         )
 
@@ -233,7 +233,12 @@ def briefing_summary(profile: dict[str, Any], agenda: dict[str, Any], health: di
         parts.append(f"{len(approvals)} approval(s) waiting")
     conflicts = agenda.get("conflicts") or []
     if conflicts:
-        parts.append(f"{len(conflicts)} calendar conflict(s)")
+        hard = [conflict for conflict in conflicts if conflict.get("conflict_type") == "hard_conflict"]
+        reminder = [conflict for conflict in conflicts if conflict.get("conflict_type") == "reminder_overlap"]
+        if hard:
+            parts.append(f"{len(hard)} calendar conflict(s)")
+        if reminder:
+            parts.append(f"{len(reminder)} reminder overlap(s)")
     if agenda.get("next_event"):
         next_title = agenda["next_event"].get("summary") or "next event"
         parts.append(f"next event is {next_title}")
@@ -290,6 +295,17 @@ def unique_cards(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def priority_score(priority: str) -> int:
     return {"urgent": 4, "high": 3, "medium": 2, "low": 1}.get(priority, 0)
+
+
+def calendar_conflict_priority(conflict: dict[str, Any]) -> str:
+    conflict_type = conflict.get("conflict_type")
+    if conflict_type == "hard_conflict":
+        return "high"
+    if conflict_type == "travel_timing_warning":
+        return "medium"
+    if conflict_type == "reminder_overlap":
+        return "low"
+    return "medium"
 
 
 def is_auth_or_verification_message(text: str) -> bool:

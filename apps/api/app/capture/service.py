@@ -58,10 +58,12 @@ def analyze_capture(payload) -> dict[str, Any]:
             "title": payload.title or "Meeting capture",
             "source_url": payload.source_url,
             "summary": "Guardian needs confirmation that recording or storing this meeting is allowed.",
+            "short_summary": "Consent is required before saving this meeting.",
             "important_points": ["Ask participants for permission before recording or storing meeting content."],
             "action_items": ["Confirm consent, then run the capture again."],
             "decisions": [],
             "people": [],
+            "questions_to_ask": ["Did everyone consent to recording or storing the meeting content?"],
             "answer": None,
             "relevant_parts": [],
             "next_tasks": ["Get consent, paste the transcript again, then save the meeting memory."],
@@ -76,10 +78,12 @@ def analyze_capture(payload) -> dict[str, Any]:
     question_keywords = keywords(payload.question or payload.title or transcript)
     ranked_segments = rank_segments(segments, question_keywords)
     summary = build_summary(transcript, ranked_segments)
+    short_summary = build_short_summary(summary)
     important_points = extract_points(transcript, ranked_segments)
     action_items = extract_action_items(transcript)
     decisions = extract_decisions(transcript)
     people = extract_people(transcript)
+    questions_to_ask = build_questions_to_ask(payload.capture_type, important_points, decisions)
     answer = build_answer(payload.question, ranked_segments) if payload.question else None
 
     guardian = review_action(
@@ -94,10 +98,12 @@ def analyze_capture(payload) -> dict[str, Any]:
         "title": payload.title or infer_title(payload.capture_type, payload.source_url),
         "source_url": payload.source_url,
         "summary": summary,
+        "short_summary": short_summary,
         "important_points": important_points,
         "action_items": action_items,
         "decisions": decisions,
         "people": people,
+        "questions_to_ask": questions_to_ask,
         "answer": answer,
         "relevant_parts": ranked_segments[:4],
         "next_tasks": build_next_tasks(payload.capture_type, action_items, decisions),
@@ -125,6 +131,7 @@ def build_missing_youtube_transcript_result(payload) -> dict[str, Any]:
         "title": title,
         "source_url": payload.source_url,
         "summary": "Paste the YouTube transcript or the important notes from the video, then MyAgent can answer questions and point to the relevant timestamps.",
+        "short_summary": "Paste the transcript so MyAgent can answer with timestamps.",
         "important_points": [
             "Free demo mode does not fetch YouTube transcripts automatically.",
             "Open the video transcript on YouTube, paste it here, and keep the YouTube link for source memory.",
@@ -132,6 +139,7 @@ def build_missing_youtube_transcript_result(payload) -> dict[str, Any]:
         "action_items": ["Paste the transcript, then ask a specific question about the video."],
         "decisions": [],
         "people": [],
+        "questions_to_ask": ["Which exact concept or timestamp should MyAgent explain after you paste the transcript?"],
         "answer": "I need transcript text before I can find the exact part of the video.",
         "relevant_parts": [],
         "next_tasks": ["Paste transcript for this YouTube link.", "Ask a focused question like: where does it explain transformers?"],
@@ -191,6 +199,12 @@ def build_summary(text: str, ranked_segments: list[dict[str, Any]]) -> str:
     return text[:650] if text else "No transcript content was provided."
 
 
+def build_short_summary(summary: str) -> str:
+    sentences = re.split(r"(?<=[.!?])\s+", summary)
+    short = " ".join(sentence for sentence in sentences[:2] if sentence).strip()
+    return short[:260] or summary[:260] or "Capture analyzed."
+
+
 def extract_points(text: str, ranked_segments: list[dict[str, Any]]) -> list[str]:
     candidates = [segment["text"] for segment in ranked_segments[:6]]
     points = []
@@ -235,6 +249,25 @@ def extract_people(text: str) -> list[str]:
     return unique[:8]
 
 
+def build_questions_to_ask(capture_type: str, important_points: list[str], decisions: list[str]) -> list[str]:
+    questions = []
+    if decisions:
+        questions.append("Who owns each decision and what is the deadline?")
+    if important_points:
+        questions.append(f"What is the next concrete step for: {important_points[0][:90]}?")
+    if capture_type == "youtube":
+        questions.append("Which timestamp should be turned into a practice project or learning task?")
+    elif capture_type == "lecture":
+        questions.append("Which concept should I review again before the next class?")
+    elif capture_type == "interview":
+        questions.append("Which answer should I practice before the interview?")
+    elif capture_type == "research":
+        questions.append("What idea from this paper can be turned into an experiment?")
+    else:
+        questions.append("Should MyAgent draft a follow-up message from this capture?")
+    return questions[:4]
+
+
 def clean_capture_sentence(text: str) -> str:
     clean = re.sub(r"^\s*(?:(?:\d{1,2}:)?\d{1,2}:\d{2})\s*", "", text).strip(" -")
     return "" if clean.isdigit() else clean
@@ -277,6 +310,8 @@ def detect_source_kind(capture_type: str, source_url: str | None) -> str:
         return "youtube"
     if capture_type == "meeting":
         return "meeting"
+    if capture_type in {"lecture", "interview", "research"}:
+        return capture_type
     return "notes"
 
 

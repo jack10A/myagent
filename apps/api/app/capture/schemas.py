@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 
 class CaptureRequest(BaseModel):
-    capture_type: str = Field(pattern="^(meeting|youtube|notes)$")
+    capture_type: str = Field(pattern="^(meeting|youtube|notes|lecture|interview|research)$")
     title: str | None = None
     source_url: str | None = None
     question: str | None = None
@@ -21,10 +21,12 @@ class CaptureResult(BaseModel):
     title: str
     source_url: str | None = None
     summary: str
+    short_summary: str
     important_points: list[str]
     action_items: list[str]
     decisions: list[str]
     people: list[str]
+    questions_to_ask: list[str]
     answer: str | None = None
     relevant_parts: list[CaptureSegment]
     next_tasks: list[str]

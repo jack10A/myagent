@@ -1,7 +1,7 @@
 import { API_URL } from "@/lib/api";
 
 export type CaptureRequest = {
-  capture_type: "meeting" | "youtube" | "notes";
+  capture_type: "meeting" | "youtube" | "notes" | "lecture" | "interview" | "research";
   title?: string;
   source_url?: string;
   question?: string;
@@ -14,10 +14,12 @@ export type CaptureResult = {
   title: string;
   source_url?: string | null;
   summary: string;
+  short_summary: string;
   important_points: string[];
   action_items: string[];
   decisions: string[];
   people: string[];
+  questions_to_ask: string[];
   answer?: string | null;
   relevant_parts: Array<{ timestamp?: string | null; text: string; relevance: number }>;
   next_tasks: string[];

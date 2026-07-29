@@ -21,6 +21,8 @@ type SpeechWindow = Window & {
   webkitSpeechRecognition?: new () => SpeechRecognitionLike;
 };
 
+type CaptureMode = CaptureRequest["capture_type"];
+
 const sampleTranscript =
   "00:15 Jack explains that MyAgent should help students and early-career builders. 02:40 The team agrees to add a Capture Agent for meetings and YouTube videos. 04:10 Action item: connect summaries to Memory and Tasks. 06:05 Decision: Gmail replies must stay as drafts until the user approves them.";
 
@@ -28,7 +30,7 @@ const sampleYoutubeTranscript =
   "00:20 The instructor explains that AI agents use tools, memory, and planning loops. 02:15 The video compares chatbots with proactive agents that monitor signals and prepare actions. 04:45 Important point: every external action should require approval. 07:30 The recommended project is a personal agent that connects email, calendar, GitHub, and learning goals. 09:10 Action item: build a demo showing one command creating a safe recommendation.";
 
 export function CaptureWorkbench() {
-  const [captureType, setCaptureType] = useState<CaptureRequest["capture_type"]>("meeting");
+  const [captureType, setCaptureType] = useState<CaptureMode>("meeting");
   const [title, setTitle] = useState("MyAgent planning meeting");
   const [sourceUrl, setSourceUrl] = useState("");
   const [question, setQuestion] = useState("What are the important parts and next actions?");
@@ -48,11 +50,14 @@ export function CaptureWorkbench() {
     return transcript.trim().length > 20;
   }, [captureType, loading, sourceUrl, transcript]);
 
-  function selectCaptureType(type: CaptureRequest["capture_type"]) {
+  function selectCaptureType(type: CaptureMode) {
     setCaptureType(type);
     if (type === "youtube" && title === "MyAgent planning meeting") {
       setTitle("YouTube capture");
     }
+    if (type === "lecture") setTitle("Lecture capture");
+    if (type === "interview") setTitle("Interview prep capture");
+    if (type === "research") setTitle("Research notes capture");
     if (type === "meeting" && title === "YouTube capture") {
       setTitle("MyAgent planning meeting");
     }
@@ -154,8 +159,8 @@ export function CaptureWorkbench() {
           <h2 className="text-lg font-semibold">Capture input</h2>
         </div>
 
-        <div className="mt-5 grid grid-cols-3 gap-2 rounded-md bg-panel p-1">
-          {(["meeting", "youtube", "notes"] as const).map((type) => (
+        <div className="mt-5 grid grid-cols-2 gap-2 rounded-md bg-panel p-1 sm:grid-cols-3">
+          {(["meeting", "youtube", "lecture", "interview", "research", "notes"] as const).map((type) => (
             <button
               className={`rounded-md px-3 py-2 text-sm font-semibold transition ${captureType === type ? "bg-white shadow-soft" : "text-ink/60 hover:text-ink"}`}
               key={type}
@@ -194,6 +199,8 @@ export function CaptureWorkbench() {
             </label>
           </div>
         )}
+
+        <CaptureModeHint type={captureType} />
 
         <div className="mt-4 flex flex-wrap gap-2">
           {captureType === "meeting" && (
@@ -264,6 +271,10 @@ export function CaptureWorkbench() {
                 <span className="rounded-md bg-panel px-3 py-1 text-xs font-semibold">{result.guardian.decision}</span>
               </div>
               <p className="mt-3 text-sm leading-6 text-ink/65">{result.summary}</p>
+              <div className="mt-4 rounded-md border border-teal/35 bg-teal/10 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal">30-second summary</p>
+                <p className="mt-2 text-sm leading-6 text-ink/70">{result.short_summary}</p>
+              </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 <span className="inline-flex items-center gap-2 rounded-md bg-panel px-3 py-2 text-xs font-semibold text-ink/65">
                   <Save size={14} />
@@ -283,6 +294,11 @@ export function CaptureWorkbench() {
                 >
                   {savingLearning ? "Saving..." : "Save to Learning Plan"}
                 </button>
+                {result.saved_to_memory ? (
+                  <a className="rounded-md border border-line px-3 py-2 text-xs font-semibold" href="/tasks">
+                    Open created tasks
+                  </a>
+                ) : null}
               </div>
               {learningStatus ? <p className="mt-3 rounded-md bg-panel p-3 text-sm font-semibold text-teal">{learningStatus}</p> : null}
             </article>
@@ -300,7 +316,13 @@ export function CaptureWorkbench() {
               <ResultList title="Next tasks" items={result.next_tasks} />
               <ResultList title="Decisions" items={result.decisions.length ? result.decisions : ["No clear decisions detected."]} />
               <ResultList title="People mentioned" items={result.people.length ? result.people : ["No people detected."]} />
+              <ResultList title="Questions to ask" items={result.questions_to_ask} />
             </div>
+
+            <article className="rounded-md border border-line bg-white p-5 shadow-soft">
+              <p className="text-sm font-semibold">Follow-up draft</p>
+              <pre className="mt-3 whitespace-pre-wrap rounded-md bg-panel p-4 font-sans text-sm leading-6 text-ink/70">{result.draft_follow_up}</pre>
+            </article>
 
             <article className="rounded-md border border-line bg-white p-5 shadow-soft">
               <p className="text-sm font-semibold">Relevant parts</p>
@@ -326,6 +348,18 @@ export function CaptureWorkbench() {
       </section>
     </div>
   );
+}
+
+function CaptureModeHint({ type }: { type: CaptureMode }) {
+  const copy: Record<CaptureMode, string> = {
+    meeting: "Confirm consent, then record or paste notes. MyAgent will extract decisions, owners, and follow-ups.",
+    youtube: "Paste a transcript with timestamps. MyAgent will answer questions and point to relevant parts.",
+    lecture: "Paste class notes or transcript. MyAgent will produce review questions and learning tasks.",
+    interview: "Paste prep notes or a mock interview. MyAgent will extract weak answers and practice questions.",
+    research: "Paste paper notes or abstracts. MyAgent will extract claims, experiments, and follow-up ideas.",
+    notes: "Paste any notes. MyAgent will turn them into memory, tasks, and a follow-up draft."
+  };
+  return <p className="mt-3 rounded-md bg-panel p-3 text-xs leading-5 text-ink/60">{copy[type]}</p>;
 }
 
 function buildLearningWhy(result: CaptureResult) {

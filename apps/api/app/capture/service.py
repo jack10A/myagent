@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
+import json
 from collections import Counter
 from datetime import UTC, datetime
 from html import unescape
@@ -47,8 +48,10 @@ STOP_WORDS = {
 
 def analyze_capture(payload) -> dict[str, Any]:
     transcript = normalize_text(payload.transcript)
+    fetched_transcript = False
     if payload.capture_type == "youtube" and not transcript and payload.source_url:
         transcript = fetch_youtube_transcript(payload.source_url) or ""
+        fetched_transcript = bool(transcript)
     if payload.capture_type == "youtube" and not transcript:
         return build_missing_youtube_transcript_result(payload)
 
@@ -63,6 +66,7 @@ def analyze_capture(payload) -> dict[str, Any]:
             "capture_type": payload.capture_type,
             "title": payload.title or "Meeting capture",
             "source_url": payload.source_url,
+            "transcript_text": None,
             "summary": "Guardian needs confirmation that recording or storing this meeting is allowed.",
             "short_summary": "Consent is required before saving this meeting.",
             "important_points": ["Ask participants for permission before recording or storing meeting content."],
@@ -103,6 +107,7 @@ def analyze_capture(payload) -> dict[str, Any]:
         "capture_type": payload.capture_type,
         "title": payload.title or infer_title(payload.capture_type, payload.source_url),
         "source_url": payload.source_url,
+        "transcript_text": transcript if fetched_transcript else None,
         "summary": summary,
         "short_summary": short_summary,
         "important_points": important_points,
@@ -136,6 +141,7 @@ def build_missing_youtube_transcript_result(payload) -> dict[str, Any]:
         "capture_type": "youtube",
         "title": title,
         "source_url": payload.source_url,
+        "transcript_text": None,
         "summary": "Paste the YouTube transcript or the important notes from the video, then MyAgent can answer questions and point to the relevant timestamps.",
         "short_summary": "Paste the transcript so MyAgent can answer with timestamps.",
         "important_points": [
@@ -353,7 +359,7 @@ def fetch_youtube_transcript(url: str) -> str | None:
             tracks = ET.fromstring(list_response.text)
             track = choose_caption_track(tracks)
             if track is None:
-                return None
+                return fetch_youtube_transcript_from_watch_page(client, video_id)
 
             transcript_response = client.get(
                 "https://www.youtube.com/api/timedtext",
@@ -365,9 +371,82 @@ def fetch_youtube_transcript(url: str) -> str | None:
                 },
             )
             transcript_response.raise_for_status()
-            return parse_timedtext(transcript_response.text)
+            return parse_timedtext(transcript_response.text) or fetch_youtube_transcript_from_watch_page(client, video_id)
     except Exception:
         return None
+
+
+def fetch_youtube_transcript_from_watch_page(client: httpx.Client, video_id: str) -> str | None:
+    response = client.get("https://www.youtube.com/watch", params={"v": video_id, "hl": "en"})
+    response.raise_for_status()
+    caption_tracks = extract_caption_tracks(response.text)
+    if not caption_tracks:
+        return None
+
+    track = choose_caption_track_from_json(caption_tracks)
+    base_url = track.get("baseUrl") if isinstance(track, dict) else None
+    if not base_url:
+        return None
+
+    separator = "&" if "?" in base_url else "?"
+    transcript_response = client.get(f"{base_url}{separator}fmt=srv3")
+    transcript_response.raise_for_status()
+    return parse_timedtext(transcript_response.text)
+
+
+def extract_caption_tracks(html: str) -> list[dict[str, Any]]:
+    marker = '"captionTracks":'
+    start = html.find(marker)
+    if start == -1:
+        return []
+    array_start = html.find("[", start + len(marker))
+    if array_start == -1:
+        return []
+    array_text = extract_balanced_json_array(html, array_start)
+    if not array_text:
+        return []
+    try:
+        tracks = json.loads(array_text)
+        return tracks if isinstance(tracks, list) else []
+    except json.JSONDecodeError:
+        return []
+
+
+def extract_balanced_json_array(text: str, start: int) -> str | None:
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(text)):
+        character = text[index]
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\":
+            escaped = True
+            continue
+        if character == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if character == "[":
+            depth += 1
+        elif character == "]":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+    return None
+
+
+def choose_caption_track_from_json(tracks: list[dict[str, Any]]) -> dict[str, Any]:
+    for language in ["en", "en-US", "en-GB"]:
+        for track in tracks:
+            if track.get("languageCode") == language:
+                return track
+    for track in tracks:
+        if track.get("kind") == "asr":
+            return track
+    return tracks[0]
 
 
 def choose_caption_track(tracks: ET.Element) -> ET.Element | None:

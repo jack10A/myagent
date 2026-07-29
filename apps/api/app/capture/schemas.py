@@ -20,6 +20,7 @@ class CaptureResult(BaseModel):
     capture_type: str
     title: str
     source_url: str | None = None
+    transcript_text: str | None = None
     summary: str
     short_summary: str
     important_points: list[str]

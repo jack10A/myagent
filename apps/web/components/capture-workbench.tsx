@@ -118,9 +118,12 @@ export function CaptureWorkbench() {
         transcript,
         consent_confirmed: captureType !== "meeting" || consent
       });
+      if (data.transcript_text) {
+        setTranscript(data.transcript_text);
+      }
       setResult(data);
       setLearningStatus("");
-      setStatus(data.saved_to_memory ? "Summary created and saved into demo memory." : "Guardian requires consent before saving this meeting.");
+      setStatus(statusForCaptureResult(data));
     } catch {
       setStatus("Capture API is not reachable. Start the backend and try again.");
     } finally {
@@ -286,6 +289,11 @@ export function CaptureWorkbench() {
                     Open source
                   </a>
                 ) : null}
+                {result.transcript_text ? (
+                  <span className="rounded-md bg-teal/10 px-3 py-2 text-xs font-semibold text-teal">
+                    Transcript fetched
+                  </span>
+                ) : null}
                 <button
                   className="rounded-md bg-ink px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={savingLearning || !result.saved_to_memory}
@@ -366,6 +374,14 @@ function buildLearningWhy(result: CaptureResult) {
   const bestPoint = result.important_points[0] || result.summary;
   const bestTask = result.next_tasks[0] || "Review and turn this into a small MyAgent improvement.";
   return `${bestPoint} Next practical step: ${bestTask}`;
+}
+
+function statusForCaptureResult(data: CaptureResult) {
+  if (data.saved_to_memory && data.transcript_text) return "Fetched YouTube captions, analyzed them, and saved the capture into memory.";
+  if (data.saved_to_memory) return "Summary created and saved into memory.";
+  if (data.capture_type === "meeting") return "Guardian requires consent before saving this meeting.";
+  if (data.capture_type === "youtube") return "Could not fetch public captions. Paste the transcript and rerun Capture.";
+  return "Capture analyzed, but it was not saved.";
 }
 
 function ResultList({ title, items }: { title: string; items: string[] }) {

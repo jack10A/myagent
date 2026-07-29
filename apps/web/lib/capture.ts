@@ -13,6 +13,7 @@ export type CaptureResult = {
   capture_type: string;
   title: string;
   source_url?: string | null;
+  transcript_text?: string | null;
   summary: string;
   short_summary: string;
   important_points: string[];

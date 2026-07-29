@@ -255,7 +255,7 @@ export function CaptureWorkbench() {
               <h2 className="text-lg font-semibold">Capture output</h2>
             </div>
             <p className="mt-3 text-sm leading-6 text-ink/65">
-              MyAgent will create a summary, important points, decisions, action items, relevant timestamps, and a draft follow-up.
+              MyAgent will create a summary, important points, decisions, action items, relevant timestamps, questions, and a draft follow-up.
             </p>
           </article>
         )}
@@ -353,7 +353,7 @@ export function CaptureWorkbench() {
 function CaptureModeHint({ type }: { type: CaptureMode }) {
   const copy: Record<CaptureMode, string> = {
     meeting: "Confirm consent, then record or paste notes. MyAgent will extract decisions, owners, and follow-ups.",
-    youtube: "Paste a transcript with timestamps. MyAgent will answer questions and point to relevant parts.",
+    youtube: "Paste a link. MyAgent will try public captions automatically; paste a transcript if captions are unavailable.",
     lecture: "Paste class notes or transcript. MyAgent will produce review questions and learning tasks.",
     interview: "Paste prep notes or a mock interview. MyAgent will extract weak answers and practice questions.",
     research: "Paste paper notes or abstracts. MyAgent will extract claims, experiments, and follow-up ideas.",

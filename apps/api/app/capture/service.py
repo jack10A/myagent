@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import re
+import xml.etree.ElementTree as ET
 from collections import Counter
 from datetime import UTC, datetime
+from html import unescape
 from typing import Any
 from uuid import uuid4
+
+import httpx
 
 from app.guardian.schemas import GuardianReviewRequest
 from app.guardian.service import review_action
@@ -43,6 +47,8 @@ STOP_WORDS = {
 
 def analyze_capture(payload) -> dict[str, Any]:
     transcript = normalize_text(payload.transcript)
+    if payload.capture_type == "youtube" and not transcript and payload.source_url:
+        transcript = fetch_youtube_transcript(payload.source_url) or ""
     if payload.capture_type == "youtube" and not transcript:
         return build_missing_youtube_transcript_result(payload)
 
@@ -333,6 +339,76 @@ def infer_title(capture_type: str, source_url: str | None) -> str:
 def extract_youtube_id(url: str) -> str | None:
     match = re.search(r"(?:v=|youtu\.be/|shorts/)([A-Za-z0-9_-]{6,})", url)
     return match.group(1) if match else None
+
+
+def fetch_youtube_transcript(url: str) -> str | None:
+    video_id = extract_youtube_id(url)
+    if not video_id:
+        return None
+
+    try:
+        with httpx.Client(timeout=12, headers={"User-Agent": "Mozilla/5.0 MyAgent Capture"}) as client:
+            list_response = client.get("https://www.youtube.com/api/timedtext", params={"type": "list", "v": video_id})
+            list_response.raise_for_status()
+            tracks = ET.fromstring(list_response.text)
+            track = choose_caption_track(tracks)
+            if track is None:
+                return None
+
+            transcript_response = client.get(
+                "https://www.youtube.com/api/timedtext",
+                params={
+                    "v": video_id,
+                    "lang": track.get("lang_code"),
+                    "name": track.get("name") or "",
+                    "fmt": "srv3",
+                },
+            )
+            transcript_response.raise_for_status()
+            return parse_timedtext(transcript_response.text)
+    except Exception:
+        return None
+
+
+def choose_caption_track(tracks: ET.Element) -> ET.Element | None:
+    track_items = list(tracks.findall("track"))
+    if not track_items:
+        return None
+    preferred = ["en", "en-US", "en-GB"]
+    for language in preferred:
+        for track in track_items:
+            if track.get("lang_code") == language:
+                return track
+    return track_items[0]
+
+
+def parse_timedtext(raw_xml: str) -> str | None:
+    root = ET.fromstring(raw_xml)
+    lines = []
+    for node in root.iter():
+        if node.tag not in {"text", "p"}:
+            continue
+        text = "".join(node.itertext()).strip()
+        if not text:
+            continue
+        start = node.get("start") or node.get("t")
+        timestamp = format_caption_timestamp(start)
+        lines.append(f"{timestamp} {unescape(text)}".strip())
+    return normalize_text(" ".join(lines)) or None
+
+
+def format_caption_timestamp(value: str | None) -> str:
+    if not value:
+        return ""
+    try:
+        seconds = float(value)
+        if seconds > 100000:
+            seconds = seconds / 1000
+        minutes = int(seconds // 60)
+        rest = int(seconds % 60)
+        return f"{minutes:02d}:{rest:02d}"
+    except ValueError:
+        return ""
 
 
 def save_capture_memory(result: dict[str, Any]) -> str:

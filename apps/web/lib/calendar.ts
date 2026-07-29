@@ -30,7 +30,7 @@ export type CalendarAgenda = {
   tomorrow: CalendarEvent[];
   week: CalendarEvent[];
   busy_days: Array<{ date: string; events: number; label: string }>;
-  conflicts: Array<{ title: string; events: string[]; when?: string; severity: string }>;
+  conflicts: Array<{ title: string; events: string[]; when?: string; severity: string; conflict_type?: string; description?: string; event_classes?: string[] }>;
   prep_tasks: CalendarPrepTask[];
   travel_guardian: TravelGuardian;
   insight: string;

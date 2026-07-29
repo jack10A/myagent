@@ -74,12 +74,13 @@ export function CalendarAgendaCard() {
           ) : null}
 
           {agenda.conflicts.length ? (
-            <div className="mt-4 rounded-md border border-coral/30 bg-coral/10 p-4">
-              <div className="flex items-center gap-2 text-coral">
+            <div className={`mt-4 rounded-md border p-4 ${agenda.conflicts[0].conflict_type === "hard_conflict" ? "border-coral/30 bg-coral/10" : "border-gold/40 bg-gold/10"}`}>
+              <div className={`flex items-center gap-2 ${agenda.conflicts[0].conflict_type === "hard_conflict" ? "text-coral" : "text-gold"}`}>
                 <TriangleAlert size={16} />
-                <p className="text-sm font-semibold">Possible overlap</p>
+                <p className="text-sm font-semibold">{agenda.conflicts[0].title || "Possible overlap"}</p>
               </div>
               <p className="mt-2 text-xs leading-5 text-ink/65">{agenda.conflicts[0].events.join(" and ")}</p>
+              {agenda.conflicts[0].description ? <p className="mt-2 text-xs leading-5 text-ink/55">{agenda.conflicts[0].description}</p> : null}
             </div>
           ) : null}
 

@@ -346,12 +346,12 @@ function buildActions({
       kind: "calendar",
       dueBucket: dueBucketFromText(conflict.when) ?? "today",
       title: conflict.title || "Calendar conflict",
-      body: (conflict.events ?? []).join(" and ") || "Calendar Agent found a possible overlap.",
-      priority: "high",
+      body: conflict.description || (conflict.events ?? []).join(" and ") || "Calendar Agent found a possible overlap.",
+      priority: conflict.conflict_type === "hard_conflict" ? "high" : conflict.conflict_type === "travel_timing_warning" ? "medium" : "low",
       source: "Calendar Agent",
       href: "#calendar-tasks",
-      action: "Resolve conflict",
-      meta: conflict.severity
+      action: conflict.conflict_type === "reminder_overlap" ? "Review reminder" : "Resolve conflict",
+      meta: conflict.conflict_type || conflict.severity
     });
   });
 

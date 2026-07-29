@@ -138,6 +138,10 @@ def add_draft_conflicts(profile: dict[str, Any], draft: dict[str, Any]) -> dict[
         if not event_start or not event_end:
             continue
         if start_dt < event_end and event_start < end_dt:
+            draft_class = classify_event(draft)
+            event_class = classify_event(event)
+            if draft_class == "soft_event" and event_class == "soft_event":
+                continue
             conflicts.append(
                 {
                     "title": event.get("summary") or "Untitled event",
@@ -145,7 +149,9 @@ def add_draft_conflicts(profile: dict[str, Any], draft: dict[str, Any]) -> dict[
                     "end": event.get("end"),
                     "start_label": event.get("start_label"),
                     "location": event.get("location"),
-                    "severity": "medium",
+                    "severity": draft_conflict_severity(draft_class, event_class),
+                    "conflict_type": conflict_type(draft_class, event_class),
+                    "description": conflict_description(draft_class, event_class),
                 }
             )
     return {**draft, "conflicts": conflicts[:4]}
@@ -288,15 +294,78 @@ def detect_conflicts(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for index, current in enumerate(timed):
         for other in timed[index + 1:]:
             if current["start_dt"] < other["end_dt"] and other["start_dt"] < current["end_dt"]:
+                current_class = classify_event(current)
+                other_class = classify_event(other)
+                if current_class == "soft_event" and other_class == "soft_event":
+                    continue
                 conflicts.append(
                     {
-                        "title": "Possible meeting conflict",
+                        "title": conflict_title(current_class, other_class),
                         "events": [current.get("summary") or "Untitled event", other.get("summary") or "Untitled event"],
                         "when": current.get("start_label"),
-                        "severity": "medium",
+                        "severity": conflict_severity(current_class, other_class),
+                        "conflict_type": conflict_type(current_class, other_class),
+                        "description": conflict_description(current_class, other_class),
+                        "event_classes": [current_class, other_class],
                     }
                 )
     return conflicts[:4]
+
+
+def classify_event(event: dict[str, Any]) -> str:
+    text = f"{event.get('summary') or event.get('title') or ''} {event.get('description') or ''} {event.get('location') or ''}".lower()
+    if any(keyword in text for keyword in ["reminder", "prep", "prepare", "checklist", "follow-up", "follow up", "focus note"]):
+        return "soft_event"
+    if looks_travel_related(event):
+        return "travel_event"
+    return "hard_event"
+
+
+def conflict_type(first: str, second: str) -> str:
+    classes = {first, second}
+    if classes == {"soft_event"}:
+        return "ignored_soft_overlap"
+    if "soft_event" in classes:
+        return "reminder_overlap"
+    if classes == {"travel_event"}:
+        return "travel_timing_warning"
+    return "hard_conflict"
+
+
+def conflict_title(first: str, second: str) -> str:
+    kind = conflict_type(first, second)
+    if kind == "reminder_overlap":
+        return "Reminder overlaps scheduled time"
+    if kind == "travel_timing_warning":
+        return "Travel timing overlap"
+    return "Possible meeting conflict"
+
+
+def conflict_description(first: str, second: str) -> str:
+    kind = conflict_type(first, second)
+    if kind == "reminder_overlap":
+        return "A soft reminder or prep block overlaps a real event. This may be okay, but MyAgent can move the reminder if it is distracting."
+    if kind == "travel_timing_warning":
+        return "Two travel-related events overlap. Check departure, arrival, transfer, and buffer time."
+    if kind == "ignored_soft_overlap":
+        return "Two soft reminders overlap, so MyAgent ignores this as a real conflict."
+    return "Two hard calendar events overlap. MyAgent should help you decide, reschedule, or draft a message."
+
+
+def conflict_severity(first: str, second: str) -> str:
+    kind = conflict_type(first, second)
+    if kind == "hard_conflict":
+        return "high"
+    if kind == "travel_timing_warning":
+        return "warning"
+    if kind == "reminder_overlap":
+        return "low"
+    return "safe"
+
+
+def draft_conflict_severity(first: str, second: str) -> str:
+    severity = conflict_severity(first, second)
+    return "medium" if severity == "high" else severity
 
 
 def summarize_busy_days(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -338,13 +407,13 @@ def build_prep_tasks(today_events: list[dict[str, Any]], tomorrow_events: list[d
             0,
             {
                 "id": f"conflict-{conflict['when']}",
-                "title": "Resolve possible calendar conflict",
+                "title": conflict["title"],
                 "when": conflict["when"],
-                "priority": "high",
+                "priority": "high" if conflict.get("conflict_type") == "hard_conflict" else "normal",
                 "steps": [
-                    f"Check overlapping events: {', '.join(conflict['events'])}.",
-                    "Decide which meeting matters most.",
-                    "Ask MyAgent to draft a reschedule message if needed.",
+                    conflict.get("description") or f"Check overlapping events: {', '.join(conflict['events'])}.",
+                    "Review whether this overlap blocks real attendance or is only a reminder.",
+                    "Ask MyAgent to move the reminder or draft a reschedule message if needed.",
                 ],
                 "event": None,
             },
@@ -365,8 +434,12 @@ def build_prep_tasks(today_events: list[dict[str, Any]], tomorrow_events: list[d
 
 
 def agenda_insight(today_events: list[dict[str, Any]], tomorrow_events: list[dict[str, Any]], conflicts: list[dict[str, Any]], busy_days: list[dict[str, Any]]) -> str:
-    if conflicts:
+    hard_conflicts = [conflict for conflict in conflicts if conflict.get("conflict_type") == "hard_conflict"]
+    reminder_overlaps = [conflict for conflict in conflicts if conflict.get("conflict_type") == "reminder_overlap"]
+    if hard_conflicts:
         return "Calendar Agent found possible overlap. MyAgent should help you reschedule or prepare a short message."
+    if reminder_overlaps:
+        return "Calendar Agent found a reminder overlapping scheduled time. This is lower risk than a real meeting conflict."
     if today_events:
         return f"You have {len(today_events)} event(s) today. MyAgent should prepare context before the next meeting."
     if tomorrow_events:
